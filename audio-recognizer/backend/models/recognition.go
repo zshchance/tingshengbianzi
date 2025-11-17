@@ -17,8 +17,8 @@ type RecognitionResult struct {
 
 // RecognitionResultSegment 识别结果段落
 type RecognitionResultSegment struct {
-	Start      time.Time              `json:"start"`      // 开始时间
-	End        time.Time              `json:"end"`        // 结束时间
+	Start      float64                `json:"start"`      // 开始时间(秒)
+	End        float64                `json:"end"`        // 结束时间(秒)
 	Text       string                 `json:"text"`       // 文本内容
 	Confidence float64                `json:"confidence"` // 置信度
 	Words      []Word                 `json:"words"`      // 词汇信息

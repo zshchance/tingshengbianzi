@@ -111,7 +111,7 @@ import { useAudioFile } from './composables/useAudioFile'
 import { useWails } from './composables/useWails'
 import { useSettings } from './composables/useSettings'
 import { generateFineGrainedTimestampedText } from './utils/timeFormatter'
-import { generateFineGrainedTimestampedText as generateEnhancedTimestamps, optimizeSpeedAnalysis } from './utils/fineGrainedTimestamps'
+import { generateFineGrainedTimestampedText as generateEnhancedTimestamps, optimizeSpeedAnalysis, intelligentDeduplication } from './utils/fineGrainedTimestamps'
 import { generateAIOptimizationPrompt, preprocessText, generateTextQualityReport } from './utils/aiOptimizer'
 import RecognitionLogger from './utils/recognitionLogger'
 import { EventsOn } from '../wailsjs/runtime/runtime.js'
@@ -893,7 +893,44 @@ const setupGlobalWailsEvents = () => {
         await RecognitionLogger.logDetailedSegments(response.result.segments)
       }
 
-      // 修复：从segments生成text字段
+      // 🔧 智能去重处理 - 针对长音频重复识别问题
+      let originalSegmentsCount = 0
+      let deduplicatedSegmentsCount = 0
+      if (response.result.segments && response.result.segments.length > 0) {
+        originalSegmentsCount = response.result.segments.length
+
+        // 应用智能去重算法
+        const deduplicatedSegments = intelligentDeduplication(response.result.segments, {
+          similarityThreshold: 0.85,    // 85% 相似度阈值
+          timeOverlapThreshold: 0.3,   // 30% 时间重叠阈值
+          minLength: 3,                // 最小有效长度
+          enableTimeAnalysis: true,    // 启用时间重叠分析
+          enableSemanticAnalysis: false // 暂不启用语义分析
+        })
+
+        deduplicatedSegmentsCount = deduplicatedSegments.length
+
+        // 替换原始segments为去重后的结果
+        response.result.segments = deduplicatedSegments
+
+        // 记录去重过程到日志
+        await RecognitionLogger.logToFile('deduplication', 'intelligent_deduplication', {
+          originalSegmentCount: originalSegmentsCount,
+          deduplicatedSegmentCount: deduplicatedSegmentsCount,
+          removedDuplicates: originalSegmentsCount - deduplicatedSegmentsCount,
+          deduplicationRate: ((originalSegmentsCount - deduplicatedSegmentsCount) / originalSegmentsCount * 100).toFixed(2) + '%',
+          config: {
+            similarityThreshold: 0.85,
+            timeOverlapThreshold: 0.3,
+            minLength: 3,
+            enableTimeAnalysis: true
+          }
+        })
+
+        console.log(`🧠 智能去重完成: ${originalSegmentsCount} → ${deduplicatedSegmentsCount} (去除 ${originalSegmentsCount - deduplicatedSegmentsCount} 个重复片段)`)
+      }
+
+      // 修复：从去重后的segments生成text字段
       if (!response.result.text && response.result.segments && response.result.segments.length > 0) {
         response.result.text = response.result.segments
           .map(segment => segment.text)

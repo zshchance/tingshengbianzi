@@ -62,6 +62,191 @@ const WORD_PAUSES = {
 }
 
 /**
+ * 计算两个字符串之间的编辑距离（Levenshtein距离）
+ * @param {string} str1 - 第一个字符串
+ * @param {string} str2 - 第二个字符串
+ * @returns {number} 编辑距离
+ */
+function editDistance(str1, str2) {
+  const len1 = str1.length
+  const len2 = str2.length
+
+  if (len1 === 0) return len2
+  if (len2 === 0) return len1
+
+  const matrix = Array(len2 + 1).fill(null).map(() => Array(len1 + 1).fill(null))
+
+  for (let i = 0; i <= len1; i++) {
+    matrix[0][i] = i
+  }
+
+  for (let j = 0; j <= len2; j++) {
+    matrix[j][0] = j
+  }
+
+  for (let j = 1; j <= len2; j++) {
+    for (let i = 1; i <= len1; i++) {
+      const indicator = str1[i - 1] === str2[j - 1] ? 0 : 1
+      matrix[j][i] = Math.min(
+        matrix[j][i - 1] + 1,        // deletion
+        matrix[j - 1][i] + 1,        // insertion
+        matrix[j - 1][i - 1] + indicator // substitution
+      )
+    }
+  }
+
+  return matrix[len2][len1]
+}
+
+/**
+ * 安全的时间字符串转换函数
+ * @param {string|number} timeValue - 时间值（可能是数字、时间字符串等）
+ * @returns {number} 转换后的秒数
+ */
+function safeTimeStringToSeconds(timeValue) {
+  // 如果已经是数字，直接返回
+  if (typeof timeValue === 'number') {
+    return timeValue
+  }
+
+  // 如果是数字字符串，转换为数字
+  if (typeof timeValue === 'string' && !isNaN(timeValue) && timeValue.trim() !== '') {
+    return parseFloat(timeValue)
+  }
+
+  // 如果包含T，可能是旧版本的ISO格式，使用timeStringToSeconds处理
+  if (typeof timeValue === 'string' && timeValue.includes('T')) {
+    return timeStringToSeconds(timeValue)
+  }
+
+  // 其他情况，尝试转换为数字
+  const parsed = parseFloat(timeValue)
+  return isNaN(parsed) ? 0 : parsed
+}
+
+/**
+ * 计算两个字符串的相似度（基于编辑距离）
+ * @param {string} text1 - 第一个文本
+ * @param {string} text2 - 第二个文本
+ * @returns {number} 相似度（0-1之间）
+ */
+function calculateSimilarity(text1, text2) {
+  if (!text1 || !text2) return 0
+  if (text1 === text2) return 1
+
+  const longer = text1.length > text2.length ? text1 : text2
+  const shorter = text1.length > text2.length ? text2 : text1
+
+  if (longer.length === 0) return 1
+
+  // 计算编辑距离
+  const distance = editDistance(longer, shorter)
+
+  // 计算相似度（1 - 编辑距离/较长字符串长度）
+  return (longer.length - distance) / longer.length
+}
+
+/**
+ * 智能去重处理 - 针对长音频重复识别问题优化
+ * @param {Array} segments - Whisper识别片段数组
+ * @param {Object} options - 配置选项
+ * @returns {Array} 去重后的片段数组
+ */
+export function intelligentDeduplication(segments, options = {}) {
+  if (!segments || !Array.isArray(segments) || segments.length === 0) {
+    return []
+  }
+
+  const config = {
+    similarityThreshold: 0.85, // 相似度阈值
+    timeOverlapThreshold: 0.3,  // 时间重叠阈值（30%重叠视为重复）
+    minLength: 3,               // 最小有效长度
+    enableTimeAnalysis: true,   // 启用时间分析
+    enableSemanticAnalysis: false, // 启用语义分析（可选）
+    ...options
+  }
+
+  console.log('🧠 开始智能去重处理:', {
+    原始片段数: segments.length,
+    配置: config
+  })
+
+  const deduped = []
+  const timeRanges = []
+  let duplicates = 0
+
+  segments.forEach((segment, index) => {
+    const segmentText = segment.text?.trim() || ''
+    const startTime = parseFloat(segment.start) || 0
+    const endTime = parseFloat(segment.end) || startTime
+
+    // 过滤太短或无效的片段
+    if (segmentText.length < config.minLength) {
+      console.log(`🚫 过滤过短片段 [${index}]: "${segmentText}"`)
+      return
+    }
+
+    let isDuplicate = false
+
+    // 1. 时间重叠检查
+    if (config.enableTimeAnalysis) {
+      const hasTimeOverlap = timeRanges.some(range => {
+        const overlap = Math.min(endTime, range.end) - Math.max(startTime, range.start)
+        const segmentDuration = endTime - startTime
+        const rangeDuration = range.end - range.start
+        const maxDuration = Math.max(segmentDuration, rangeDuration)
+
+        // 如果重叠比例超过阈值，视为时间重叠
+        return overlap > 0 && (overlap / maxDuration) > config.timeOverlapThreshold
+      })
+
+      if (hasTimeOverlap) {
+        console.log(`⏰ 时间重叠跳过 [${index}]: "${segmentText.substring(0, 20)}..." (${startTime}-${endTime})`)
+        duplicates++
+        return
+      }
+    }
+
+    // 2. 文本相似度检查
+    for (const existingSegment of deduped) {
+      const similarity = calculateSimilarity(segmentText, existingSegment.text)
+
+      if (similarity >= config.similarityThreshold) {
+        console.log(`📝 相似文本跳过 [${index}]: "${segmentText.substring(0, 20)}..." (相似度: ${(similarity * 100).toFixed(1)}%)`)
+        duplicates++
+        isDuplicate = true
+        break
+      }
+    }
+
+    // 如果不是重复，添加到结果中
+    if (!isDuplicate) {
+      deduped.push({
+        text: segmentText,
+        start: segment.start,  // 保持原始格式，不要转换
+        end: segment.end,      // 保持原始格式，不要转换
+        originalIndex: index,
+        confidence: segment.confidence
+      })
+
+      if (config.enableTimeAnalysis) {
+        timeRanges.push({ start: startTime, end: endTime })
+      }
+    }
+  })
+
+  const deduplicationRate = (duplicates / segments.length) * 100
+  console.log('✅ 智能去重完成:', {
+    原始数量: segments.length,
+    保留数量: deduped.length,
+    去除重复: duplicates,
+    去重率: `${deduplicationRate.toFixed(2)}%`
+  })
+
+  return deduped
+}
+
+/**
  * 计算文本的基本统计信息
  * @param {string} text - 文本内容
  * @returns {Object} 统计信息
@@ -186,6 +371,8 @@ export function generateFineGrainedTimestamps(text, startTime, endTime, options 
     minSegmentLength: 8, // 最小片段长度（字符数）
     maxSegmentLength: 20, // 最大片段长度（字符数）
     averageSpeed: 4.0, // 默认语速（字符/秒）
+    similarityThreshold: 0.85, // 提高相似度阈值至85%
+    enableEnhancedDeduplication: true, // 启用增强去重
     ...options
   }
 
@@ -320,14 +507,17 @@ export function generateFineGrainedTimestampedText(segments, options = {}) {
     })
 
     if (segment.text && segment.start !== undefined && segment.end !== undefined) {
-      const startTime = timeStringToSeconds(segment.start)
-      const endTime = timeStringToSeconds(segment.end)
+      // 安全的时间转换，处理多种格式
+      const startTime = safeTimeStringToSeconds(segment.start)
+      const endTime = safeTimeStringToSeconds(segment.end)
 
       console.log(`⏰ 时间转换 [${index}]:`, {
         originalStart: segment.start,
         originalEnd: segment.end,
         convertedStart: startTime,
-        convertedEnd: endTime
+        convertedEnd: endTime,
+        startType: typeof segment.start,
+        endType: typeof segment.end
       })
 
       if (startTime < endTime) {

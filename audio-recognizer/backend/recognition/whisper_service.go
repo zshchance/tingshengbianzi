@@ -332,8 +332,8 @@ func (s *WhisperService) parseWhisperOutput(srtFile string, audioInfo *models.Au
 
 					// 添加到段落结果
 					segment := models.RecognitionResultSegment{
-						Start:      time.Unix(0, int64(startTime*1e9)), // 转换为time.Time
-						End:        time.Unix(0, int64(endTime*1e9)),
+						Start:      startTime, // 直接使用秒数
+						End:        endTime,
 						Text:       simplifiedText,
 						Confidence: 0.8,
 						Words:      []models.Word{{

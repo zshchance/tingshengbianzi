@@ -92,10 +92,8 @@ export namespace models {
 	    }
 	}
 	export class RecognitionResultSegment {
-	    // Go type: time
-	    start: any;
-	    // Go type: time
-	    end: any;
+	    start: number;
+	    end: number;
 	    text: string;
 	    confidence: number;
 	    words: Word[];
@@ -107,8 +105,8 @@ export namespace models {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.start = this.convertValues(source["start"], null);
-	        this.end = this.convertValues(source["end"], null);
+	        this.start = source["start"];
+	        this.end = source["end"];
 	        this.text = source["text"];
 	        this.confidence = source["confidence"];
 	        this.words = this.convertValues(source["words"], Word);
