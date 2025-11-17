@@ -550,9 +550,9 @@ export class UIController {
         // 生成精简的带时间戳的文本，不包含HTML标签
         let resultText = '';
 
-        // 如果结果文本已经包含时间戳，直接使用
+        // 如果结果文本已经包含时间戳，处理格式并移除纯标点行
         if (result.text && this.containsTimestamps(result.text)) {
-            resultText = result.text;
+            resultText = this.formatOriginalTimestamps(result.text);
         }
         // 如果有words数组但没有时间戳，生成带时间戳的文本
         else if (result.words && Array.isArray(result.words) && result.words.length > 0) {
@@ -584,15 +584,18 @@ export class UIController {
                     // 按标点符号分割文本，每个部分独立一行
                     const segments = this.splitTextByPunctuation(wordText);
                     segments.forEach((segment, index) => {
-                        if (segment.trim()) {
+                        if (segment.trim() && !this.isOnlyPunctuation(segment.trim())) {
                             // 为后续片段添加微小的偏移量
                             const segmentTime = startTime + (index * 0.1);
                             const segmentTimestamp = this.formatTimestamp(segmentTime);
-                            textLines.push(`${segmentTimestamp} ${segment.trim()}`);
+                            textLines.push(`[${segmentTimestamp}] ${segment.trim()}`);
                         }
                     });
                 } else {
-                    textLines.push(wordText);
+                    // 没有时间戳的文本，如果不是纯标点符号则保留
+                    if (!this.isOnlyPunctuation(wordText.trim())) {
+                        textLines.push(wordText);
+                    }
                 }
             }
         });
@@ -664,6 +667,55 @@ export class UIController {
         }
 
         return merged;
+    }
+
+    /**
+     * 格式化原始时间戳文本，转换为[]格式并移除纯标点行
+     * @param {string} text - 包含时间戳的文本
+     * @returns {string} 格式化后的文本
+     */
+    formatOriginalTimestamps(text) {
+        // 按行分割文本
+        const lines = text.split('\n');
+        const formattedLines = [];
+
+        lines.forEach(line => {
+            const trimmedLine = line.trim();
+
+            // 如果是空行，跳过
+            if (!trimmedLine) {
+                return;
+            }
+
+            // 检查是否包含时间戳
+            const timestampMatch = trimmedLine.match(/(\d{2}:\d{2}:\d{2}\.\d{3})\s*(.*)/);
+
+            if (timestampMatch) {
+                const [, timestamp, content] = timestampMatch;
+
+                // 如果有内容且不只是标点符号，则添加格式化行
+                if (content && content.trim() && !this.isOnlyPunctuation(content.trim())) {
+                    formattedLines.push(`[${timestamp}] ${content.trim()}`);
+                }
+            } else {
+                // 不包含时间戳的行，如果不是纯标点符号，则保留
+                if (!this.isOnlyPunctuation(trimmedLine)) {
+                    formattedLines.push(trimmedLine);
+                }
+            }
+        });
+
+        return formattedLines.join('\n');
+    }
+
+    /**
+     * 检查文本是否只包含标点符号
+     * @param {string} text - 要检查的文本
+     * @returns {boolean} 是否只包含标点符号
+     */
+    isOnlyPunctuation(text) {
+        const punctuationRegex = /^[，。！？；：、…,.!?:;'"()\[\]{}\/\\—–\s]*$/;
+        return punctuationRegex.test(text);
     }
 
     /**
