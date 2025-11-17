@@ -217,8 +217,15 @@ export class UIController {
         const fileDurationElement = document.getElementById('fileDuration');
         const fileSizeElement = document.getElementById('fileSize');
         const fileFormatElement = document.getElementById('fileFormat');
+        const fileDropZone = document.getElementById('fileDropZone');
 
         if (fileInfoElement) {
+            // 隐藏文件上传框
+            if (fileDropZone) {
+                fileDropZone.style.display = 'none';
+            }
+
+            // 显示文件信息区域
             fileInfoElement.style.display = 'block';
             fileInfoElement.classList.add('fade-in');
 
@@ -245,14 +252,30 @@ export class UIController {
      */
     hideFileInfo() {
         const fileInfoElement = document.getElementById('fileInfo');
+        const fileDropZone = document.getElementById('fileDropZone');
+
+        // 隐藏文件信息区域
         if (fileInfoElement) {
             fileInfoElement.style.display = 'none';
+        }
+
+        // 重新显示文件上传框
+        if (fileDropZone) {
+            fileDropZone.style.display = 'block';
         }
 
         // 清空文件输入
         const fileInput = document.getElementById('fileInput');
         if (fileInput) {
             fileInput.value = '';
+        }
+
+        // 禁用开始按钮
+        this.disableStartButton();
+
+        // 清理当前文件状态
+        if (window.audioApp) {
+            window.audioApp.currentFile = null;
         }
     }
 

@@ -5,13 +5,18 @@
 export class AudioFileProcessor {
     constructor() {
         this.supportedFormats = [
-            'audio/mpeg',     // MP3
-            'audio/wav',      // WAV
-            'audio/x-wav',    // WAV variants
-            'audio/ogg',      // OGG
-            'audio/mp4',      // M4A
-            'audio/flac',     // FLAC
-            'audio/x-flac',   // FLAC variants
+            'audio/mpeg',         // MP3
+            'audio/wav',          // WAV
+            'audio/x-wav',        // WAV variants
+            'audio/ogg',          // OGG
+            'audio/mp4',          // M4A, MP4
+            'audio/flac',         // FLAC
+            'audio/x-flac',       // FLAC variants
+            'audio/aac',          // AAC
+            'audio/x-ms-wma',     // WMA
+            'audio/3gpp',         // 3GP
+            'audio/webm',         // WebM
+            'audio/x-caf',        // CAF (Core Audio Format)
         ];
     }
 
@@ -25,8 +30,13 @@ export class AudioFileProcessor {
             return false;
         }
 
-        // 检查MIME类型
-        if (!this.supportedFormats.includes(file.type)) {
+        // 检查MIME类型，如果为空或不正确，尝试从文件扩展名推断
+        let mimeType = file.type;
+        if (!mimeType || !this.supportedFormats.includes(mimeType)) {
+            mimeType = this.getMimeTypeFromExtension(file.name);
+        }
+
+        if (!mimeType || !this.supportedFormats.includes(mimeType)) {
             return false;
         }
 
@@ -55,20 +65,29 @@ export class AudioFileProcessor {
 
             console.log('文件类型验证通过:', file.type);
 
+            // 检测文件类型（处理不正确的MIME类型）
+            const detectedType = file.type || this.getMimeTypeFromExtension(file.name) || 'unknown';
+
             // 提取文件信息
             const fileInfo = {
                 name: file.name,
                 size: file.size,
-                type: file.type,
+                type: detectedType,
                 lastModified: file.lastModified,
                 path: file.path || file.webkitRelativePath || file.name, // Wails文件路径或回退到文件名
                 formattedSize: this.formatFileSize(file.size),
-                formattedType: this.getFormattedFileType(file.type)
+                formattedType: this.getFormattedFileType(detectedType)
             };
 
             // 获取音频时长
-            fileInfo.duration = await this.getAudioDuration(file);
-            fileInfo.formattedDuration = this.formatTime(fileInfo.duration);
+            try {
+                fileInfo.duration = await this.getAudioDuration(file);
+                fileInfo.formattedDuration = this.formatTime(fileInfo.duration);
+            } catch (durationError) {
+                console.warn('获取音频时长失败:', durationError.message);
+                fileInfo.duration = 0;
+                fileInfo.formattedDuration = '无法获取时长';
+            }
 
             console.log('文件信息已提取:', fileInfo);
             return fileInfo;
@@ -173,9 +192,14 @@ export class AudioFileProcessor {
             'audio/wav': 'WAV音频',
             'audio/x-wav': 'WAV音频',
             'audio/ogg': 'OGG音频',
-            'audio/mp4': 'M4A音频',
+            'audio/mp4': 'M4A/MP4音频',
             'audio/flac': 'FLAC音频',
             'audio/x-flac': 'FLAC音频',
+            'audio/aac': 'AAC音频',
+            'audio/x-ms-wma': 'WMA音频',
+            'audio/3gpp': '3GP音频',
+            'audio/webm': 'WebM音频',
+            'audio/x-caf': 'CAF音频',
         };
 
         return typeMap[mimeType] || mimeType;
@@ -204,6 +228,12 @@ export class AudioFileProcessor {
             'm4a': 'audio/mp4',
             'flac': 'audio/flac',
             'aac': 'audio/aac',
+            'wma': 'audio/x-ms-wma',
+            'aac': 'audio/aac',
+            '3gp': 'audio/3gpp',
+            'webm': 'audio/webm',
+            'mp4': 'audio/mp4',
+            'caf': 'audio/x-caf',
         };
 
         return extensionMap[extension] || null;
@@ -217,9 +247,9 @@ export class AudioFileProcessor {
     createDisplayFileInfo(fileInfo) {
         return {
             name: fileInfo.name,
-            size: `大小: ${fileInfo.formattedSize}`,
-            format: `格式: ${fileInfo.formattedType}`,
-            duration: `时长: ${fileInfo.formattedDuration}`,
+            formattedSize: fileInfo.formattedSize || '未知',
+            formattedType: fileInfo.formattedType || '未知',
+            formattedDuration: fileInfo.formattedDuration || '计算中...',
             path: fileInfo.path
         };
     }
