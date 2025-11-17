@@ -1,0 +1,689 @@
+<template>
+  <section v-if="visible" class="result-section">
+    <div class="result-header">
+      <div class="result-tabs">
+        <button
+          v-for="tab in tabs"
+          :key="tab.id"
+          :class="['tab-btn', { active: activeTab === tab.id }]"
+          @click="activeTab = tab.id"
+        >
+          {{ tab.icon }} {{ tab.label }}
+        </button>
+      </div>
+      <div class="result-actions">
+        <button
+          @click="copyToClipboard"
+          :disabled="!currentContent"
+          class="btn btn-small btn-secondary"
+          title="复制当前内容"
+        >
+          📋 复制
+        </button>
+        <button
+          v-if="activeTab === 'ai'"
+          @click="copyAIPrompt"
+          :disabled="!aiPrompt"
+          class="btn btn-small btn-secondary"
+          title="复制AI提示"
+        >
+          ✨ 复制提示
+        </button>
+        <button
+          @click="exportResult"
+          :disabled="!recognitionResult"
+          class="btn btn-small btn-primary"
+          title="导出文件"
+        >
+          💾 导出
+        </button>
+      </div>
+    </div>
+
+    <div class="result-content">
+      <!-- 加载状态 -->
+      <div v-if="isLoading" class="result-loading">
+        <div class="loading-spinner"></div>
+        <p>{{ loadingText }}</p>
+      </div>
+
+      <!-- 结果显示 -->
+      <div v-else-if="currentContent" class="result-display">
+        <!-- 原始结果 -->
+        <div v-if="activeTab === 'original'" class="content-display">
+          <div class="result-meta">
+            <div class="meta-item">
+              <span class="meta-label">识别时长:</span>
+              <span class="meta-value">{{ formatDuration(resultDuration) }}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">识别语言:</span>
+              <span class="meta-value">{{ languageLabel }}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">字符数:</span>
+              <span class="meta-value">{{ characterCount }}</span>
+            </div>
+          </div>
+          <div class="content-text" v-html="formattedOriginalContent"></div>
+        </div>
+
+        <!-- AI优化结果 -->
+        <div v-else-if="activeTab === 'ai'" class="content-display">
+          <div v-if="isOptimizing" class="ai-optimizing">
+            <div class="ai-animation">
+              <div class="ai-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+            <p>AI正在优化识别结果...</p>
+          </div>
+          <div v-else class="content-text" v-html="formattedAIContent"></div>
+        </div>
+
+        <!-- 字幕模式 -->
+        <div v-else-if="activeTab === 'subtitle'" class="content-display">
+          <div class="subtitle-controls">
+            <button
+              @click="toggleTimestampVisibility"
+              class="btn btn-small btn-secondary"
+            >
+              {{ showTimestamps ? '隐藏' : '显示' }}时间戳
+            </button>
+            <select
+              v-model="subtitleFormat"
+              class="select-input btn-small"
+            >
+              <option value="srt">SRT格式</option>
+              <option value="vtt">WebVTT格式</option>
+              <option value="simple">简单格式</option>
+            </select>
+          </div>
+          <div class="subtitle-content">
+            <div
+              v-for="(segment, index) in subtitleSegments"
+              :key="index"
+              class="subtitle-segment"
+            >
+              <span v-if="showTimestamps" class="subtitle-timestamp">
+                {{ formatTimestamp(segment.start) }}
+              </span>
+              <span class="subtitle-text">{{ segment.text }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 空状态 -->
+      <div v-else class="result-placeholder">
+        <div class="placeholder-icon">📝</div>
+        <p>等待识别结果...</p>
+        <p class="placeholder-hint">选择音频文件并开始识别后，结果将显示在这里</p>
+      </div>
+    </div>
+  </section>
+</template>
+
+<script setup>
+import { ref, computed, watch } from 'vue'
+import { useToastStore } from '../stores/toast'
+import {
+  formatTimestamp,
+  formatSRTTime,
+  formatWebVTTTime,
+  formatDuration,
+  highlightTimestamps,
+  timeStringToSeconds
+} from '../utils/timeFormatter'
+
+const props = defineProps({
+  visible: {
+    type: Boolean,
+    default: false
+  },
+  recognitionResult: {
+    type: Object,
+    default: null
+  },
+  isLoading: {
+    type: Boolean,
+    default: false
+  },
+  loadingText: {
+    type: String,
+    default: '正在处理识别结果...'
+  }
+})
+
+const emit = defineEmits(['export', 'optimize'])
+
+const toastStore = useToastStore()
+
+// 状态
+const activeTab = ref('original')
+const showTimestamps = ref(true)
+const subtitleFormat = ref('srt')
+const isOptimizing = ref(false)
+const aiOptimizedContent = ref('')
+
+// 标签配置
+const tabs = [
+  { id: 'original', label: '原始结果', icon: '📄' },
+  { id: 'ai', label: 'AI优化', icon: '✨' },
+  { id: 'subtitle', label: '字幕模式', icon: '🎵' }
+]
+
+// 计算属性
+const currentContent = computed(() => {
+  if (activeTab.value === 'original') {
+    // 优先使用带时间戳的文本，如果没有则使用普通文本
+    return props.recognitionResult?.timestampedText || props.recognitionResult?.text || ''
+  } else if (activeTab.value === 'ai') {
+    return aiOptimizedContent.value
+  } else if (activeTab.value === 'subtitle') {
+    return props.recognitionResult?.segments || []
+  }
+  return ''
+})
+
+const resultDuration = computed(() => {
+  return props.recognitionResult?.duration || 0
+})
+
+const languageLabel = computed(() => {
+  const languageMap = {
+    'zh-CN': '中文',
+    'en-US': 'English'
+  }
+  return languageMap[props.recognitionResult?.language] || '未知'
+})
+
+const characterCount = computed(() => {
+  return (props.recognitionResult?.text || '').length
+})
+
+const subtitleSegments = computed(() => {
+  const segments = props.recognitionResult?.segments || []
+
+  if (subtitleFormat.value === 'srt') {
+    return segments.map((segment, index) => ({
+      ...segment,
+      text: `${index + 1}\n${formatSRTTime(segment.start)} --> ${formatSRTTime(segment.end)}\n${segment.text || ''}`
+    }))
+  } else if (subtitleFormat.value === 'vtt') {
+    return segments.map(segment => ({
+      ...segment,
+      text: `${formatWebVTTTime(segment.start)} --> ${formatWebVTTTime(segment.end)}\n${segment.text || ''}`
+    }))
+  }
+
+  return segments
+})
+
+const formattedOriginalContent = computed(() => {
+  // 优先使用带时间戳的文本
+  let text = props.recognitionResult?.timestampedText || props.recognitionResult?.text || ''
+  if (!text) return ''
+
+  // 高亮时间戳并格式化
+  const highlightedText = highlightTimestamps(text)
+
+  return highlightedText
+    .split('\n')
+    .filter(line => line.trim())
+    .map(line => `<p>${line.trim()}</p>`)
+    .join('')
+})
+
+const formattedAIContent = computed(() => {
+  const text = aiOptimizedContent.value
+  if (!text) return ''
+
+  return text
+    .split('\n')
+    .filter(line => line.trim())
+    .map(line => `<p>${line.trim()}</p>`)
+    .join('')
+})
+
+const aiPrompt = computed(() => {
+  const originalText = props.recognitionResult?.text || ''
+  if (!originalText) return ''
+
+  return `请优化以下语音识别文本，要求：
+1. 修正明显的识别错误
+2. 添加适当的标点符号
+3. 优化语句结构，使其更通顺
+4. 保持原意不变
+
+原始文本：
+${originalText}`
+})
+
+
+
+const copyToClipboard = async () => {
+  try {
+    let textToCopy = ''
+
+    if (activeTab.value === 'original') {
+      textToCopy = props.recognitionResult?.text || ''
+    } else if (activeTab.value === 'ai') {
+      textToCopy = aiOptimizedContent.value
+    } else if (activeTab.value === 'subtitle') {
+      textToCopy = subtitleSegments.value.map(segment => {
+        if (showTimestamps.value) {
+          return `${formatTimestamp(segment.start)} ${segment.text}`
+        }
+        return segment.text
+      }).join('\n')
+    }
+
+    if (!textToCopy) {
+      toastStore.showWarning('无内容', '当前标签页没有可复制的内容')
+      return
+    }
+
+    await navigator.clipboard.writeText(textToCopy)
+    toastStore.showSuccess('复制成功', '内容已复制到剪贴板')
+  } catch (error) {
+    console.error('复制失败:', error)
+    toastStore.showError('复制失败', error.message)
+  }
+}
+
+const copyAIPrompt = async () => {
+  try {
+    await navigator.clipboard.writeText(aiPrompt.value)
+    toastStore.showSuccess('提示已复制', 'AI优化提示已复制到剪贴板')
+  } catch (error) {
+    console.error('复制失败:', error)
+    toastStore.showError('复制失败', error.message)
+  }
+}
+
+const exportResult = () => {
+  if (!props.recognitionResult) {
+    toastStore.showWarning('无结果', '没有可导出的识别结果')
+    return
+  }
+
+  emit('export', {
+    format: activeTab.value === 'subtitle' ? subtitleFormat.value : 'txt',
+    content: currentContent.value,
+    filename: generateFilename()
+  })
+}
+
+const generateFilename = () => {
+  const date = new Date()
+  const dateStr = date.toISOString().split('T')[0]
+  const timeStr = date.toTimeString().split(' ')[0].replace(/:/g, '-')
+  const suffix = activeTab.value === 'original' ? 'original' :
+                 activeTab.value === 'ai' ? 'ai-optimized' : 'subtitle'
+  return `audio-recognizer-${suffix}-${dateStr}-${timeStr}`
+}
+
+const toggleTimestampVisibility = () => {
+  showTimestamps.value = !showTimestamps.value
+}
+
+const startAIOptimization = async () => {
+  if (!props.recognitionResult?.text) {
+    toastStore.showWarning('无内容', '没有可优化的识别结果')
+    return
+  }
+
+  try {
+    isOptimizing.value = true
+    emit('optimize', props.recognitionResult.text)
+  } catch (error) {
+    console.error('AI优化失败:', error)
+    toastStore.showError('AI优化失败', error.message)
+  } finally {
+    isOptimizing.value = false
+  }
+}
+
+// 监听标签切换
+watch(activeTab, (newTab) => {
+  if (newTab === 'ai' && !aiOptimizedContent.value && props.recognitionResult?.text) {
+    startAIOptimization()
+  }
+})
+
+// 监听识别结果变化
+watch(() => props.recognitionResult, (newResult) => {
+  if (newResult && activeTab.value === 'ai') {
+    startAIOptimization()
+  }
+})
+
+// 暴露方法给父组件
+defineExpose({
+  startAIOptimization,
+  setAIOptimizedContent: (content) => {
+    aiOptimizedContent.value = content
+  }
+})
+</script>
+
+<style scoped>
+.result-section {
+  background: var(--card-bg, #ffffff);
+  border-radius: 12px;
+  margin: 20px 0;
+  box-shadow: var(--shadow-sm, 0 2px 4px rgba(0, 0, 0, 0.1));
+  border: 1px solid var(--border-color, #e5e7eb);
+  overflow: hidden;
+}
+
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: var(--bg-secondary, #f9fafb);
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.result-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.tab-btn {
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #6b7280);
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tab-btn:hover {
+  background: var(--bg-hover, #f3f4f6);
+  color: var(--text-primary, #1f2937);
+}
+
+.tab-btn.active {
+  background: var(--primary-color, #3b82f6);
+  color: white;
+}
+
+.result-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.result-content {
+  min-height: 200px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.result-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  color: var(--text-secondary, #6b7280);
+}
+
+.loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border-color, #e5e7eb);
+  border-top: 3px solid var(--primary-color, #3b82f6);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.content-display {
+  padding: 20px;
+}
+
+.result-meta {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 20px;
+  padding: 12px;
+  background: var(--bg-meta, #f8fafc);
+  border-radius: 8px;
+  flex-wrap: wrap;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.meta-label {
+  color: var(--text-muted, #6b7280);
+  font-weight: 500;
+}
+
+.meta-value {
+  color: var(--text-primary, #1f2937);
+  font-weight: 600;
+}
+
+.content-text {
+  line-height: 1.6;
+  color: var(--text-primary, #1f2937);
+  font-size: 15px;
+}
+
+.content-text :deep(p) {
+  margin: 0 0 12px 0;
+}
+
+.content-text :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.ai-optimizing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  color: var(--text-secondary, #6b7280);
+}
+
+.ai-animation {
+  margin-bottom: 16px;
+}
+
+.ai-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.ai-dots span {
+  width: 8px;
+  height: 8px;
+  background: var(--primary-color, #3b82f6);
+  border-radius: 50%;
+  animation: ai-bounce 1.4s ease-in-out infinite both;
+}
+
+.ai-dots span:nth-child(1) { animation-delay: -0.32s; }
+.ai-dots span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes ai-bounce {
+  0%, 80%, 100% {
+    transform: scale(0);
+  }
+  40% {
+    transform: scale(1);
+  }
+}
+
+.subtitle-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+}
+
+.subtitle-content {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.subtitle-segment {
+  margin-bottom: 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.subtitle-timestamp {
+  color: var(--text-muted, #6b7280);
+  font-weight: 500;
+  white-space: nowrap;
+  min-width: 120px;
+}
+
+.subtitle-text {
+  flex: 1;
+  color: var(--text-primary, #1f2937);
+}
+
+.result-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  color: var(--text-muted, #9ca3af);
+  text-align: center;
+}
+
+.placeholder-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.placeholder-hint {
+  font-size: 14px;
+  margin-top: 8px;
+  max-width: 400px;
+}
+
+/* 按钮样式 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+}
+
+.btn-small {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.btn-primary {
+  background: var(--primary-color, #3b82f6);
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-hover, #2563eb);
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: var(--secondary-color, #6b7280);
+  color: white;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--secondary-hover, #4b5563);
+  transform: translateY(-1px);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.select-input {
+  padding: 4px 8px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 4px;
+  font-size: 12px;
+  background: var(--input-bg, #ffffff);
+  color: var(--text-primary, #1f2937);
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .result-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .result-tabs {
+    justify-content: center;
+  }
+
+  .result-actions {
+    justify-content: center;
+  }
+
+  .result-meta {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .subtitle-controls {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .subtitle-segment {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .subtitle-timestamp {
+    min-width: auto;
+  }
+}
+</style>

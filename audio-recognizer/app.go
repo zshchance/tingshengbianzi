@@ -563,6 +563,7 @@ func (a *App) estimateDurationFromSize(fileSize int64, ext string) float64 {
 	return estimatedDuration
 }
 
+
 // sendProgressEvent 发送进度事件
 func (a *App) sendProgressEvent(eventType string, data interface{}) {
 	if a.ctx != nil {
