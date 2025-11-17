@@ -556,22 +556,8 @@ export class UIController {
         }
         // 如果有words数组但没有时间戳，生成带时间戳的文本
         else if (result.words && Array.isArray(result.words) && result.words.length > 0) {
-            let textLines = [];
-
-            result.words.forEach((word) => {
-                const wordText = word.text || word.word;
-                if (wordText) {
-                    const startTime = word.start !== undefined ? word.start : word.startTime;
-                    if (startTime !== undefined) {
-                        const timestamp = this.formatTimestamp(startTime);
-                        textLines.push(`${timestamp} ${wordText}`);
-                    } else {
-                        textLines.push(wordText);
-                    }
-                }
-            });
-
-            resultText = textLines.join('\n');
+            // 每个时间标记独立一行
+            resultText = this.generateTimestampedText(result.words);
         }
         // 如果没有时间戳信息，返回普通文本
         else {
@@ -579,6 +565,105 @@ export class UIController {
         }
 
         return resultText;
+    }
+
+    /**
+     * 生成时间戳标记文本
+     * @param {Array} words - 词汇数组
+     * @returns {string} 带时间戳的文本
+     */
+    generateTimestampedText(words) {
+        const textLines = [];
+
+        words.forEach((word) => {
+            const wordText = word.text || word.word;
+            if (wordText) {
+                const startTime = word.start !== undefined ? word.start : word.startTime;
+                if (startTime !== undefined) {
+                    const timestamp = this.formatTimestamp(startTime);
+                    // 按标点符号分割文本，每个部分独立一行
+                    const segments = this.splitTextByPunctuation(wordText);
+                    segments.forEach((segment, index) => {
+                        if (segment.trim()) {
+                            // 为后续片段添加微小的偏移量
+                            const segmentTime = startTime + (index * 0.1);
+                            const segmentTimestamp = this.formatTimestamp(segmentTime);
+                            textLines.push(`${segmentTimestamp} ${segment.trim()}`);
+                        }
+                    });
+                } else {
+                    textLines.push(wordText);
+                }
+            }
+        });
+
+        return textLines.join('\n');
+    }
+
+    /**
+     * 按标点符号分割文本
+     * @param {string} text - 要分割的文本
+     * @returns {Array} 分割后的文本片段
+     */
+    splitTextByPunctuation(text) {
+        const segments = [];
+        let currentSegment = '';
+
+        for (let i = 0; i < text.length; i++) {
+            const char = text[i];
+            const isPunctuation = '，。！？；：、…,.!?:;\'"'.includes(char);
+
+            if (isPunctuation) {
+                // 如果有当前内容，先保存
+                if (currentSegment.trim()) {
+                    segments.push(currentSegment.trim());
+                }
+                // 标点符号作为独立片段
+                segments.push(char);
+                currentSegment = '';
+            } else {
+                currentSegment += char;
+            }
+        }
+
+        // 添加最后一段
+        if (currentSegment.trim()) {
+            segments.push(currentSegment.trim());
+        }
+
+        // 合并过短的片段
+        return this.mergeVeryShortSegments(segments);
+    }
+
+    /**
+     * 合并过短的片段
+     * @param {Array} segments - 文本片段数组
+     * @returns {Array} 合并后的片段数组
+     */
+    mergeVeryShortSegments(segments) {
+        if (segments.length <= 1) return segments;
+
+        const merged = [];
+        let i = 0;
+
+        while (i < segments.length) {
+            const current = segments[i];
+
+            // 如果片段太短且不是标点符号，尝试与下一个片段合并
+            if (current.length < 2 && !'，。！？；：、…,.!?:;\'"'.includes(current) && i + 1 < segments.length) {
+                const next = segments[i + 1];
+                if (!'，。！？；：、…,.!?:;\'"'.includes(next)) {
+                    merged.push(current + next);
+                    i += 2;
+                    continue;
+                }
+            }
+
+            merged.push(current);
+            i++;
+        }
+
+        return merged;
     }
 
     /**

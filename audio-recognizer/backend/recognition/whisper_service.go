@@ -403,71 +403,239 @@ func (s *WhisperService) addTimestampsToText(text string, words []models.Word) s
 
 	var result strings.Builder
 
-	// 如果只有一个词且包含多个字符，按标点符号分割
-	if len(words) == 1 {
-		// 尝试按标点符号分割文本
-		parts := s.splitTextByPunctuation(words[0].Text)
-		if len(parts) > 1 {
-			// 为每个部分添加时间戳
-			for i, part := range parts {
-				if part == "" {
-					continue
-				}
-				if i > 0 {
-					result.WriteString(" ")
-				}
-				timestamp := utils.FormatTimestamp(words[0].Start + float64(i)*0.5) // 简单的时间分配
-				result.WriteString(timestamp)
-				result.WriteString(" ")
-				result.WriteString(part)
-			}
-			return result.String()
-		}
-	}
+	// 使用更精细的时间标记分割逻辑
+	timeMarks := s.generateFineTimeMarks(words)
 
-	// 正常情况：为每个词添加时间戳
-	for i, word := range words {
+	for i, mark := range timeMarks {
 		if i > 0 {
-			result.WriteString(" ")
+			result.WriteString("\n") // 每个时间标记独立一行
 		}
-		timestamp := utils.FormatTimestamp(word.Start)
+		timestamp := utils.FormatTimestamp(mark.StartTime)
 		result.WriteString(timestamp)
 		result.WriteString(" ")
-		result.WriteString(word.Text)
+		result.WriteString(mark.Text)
 	}
 
 	return result.String()
 }
 
-// splitTextByPunctuation 按标点符号分割文本
-func (s *WhisperService) splitTextByPunctuation(text string) []string {
-	var parts []string
-	current := strings.Builder{}
+// generateFineTimeMarks 生成更精细的时间标记
+func (s *WhisperService) generateFineTimeMarks(words []models.Word) []TimeMark {
+	var timeMarks []TimeMark
 
-	for _, char := range text {
-		if char == '，' || char == '。' || char == '！' || char == '？' || char == ',' || char == '.' || char == '!' || char == '?' {
-			// 遇到标点符号，保存当前部分
-			if current.Len() > 0 {
-				parts = append(parts, current.String())
-				current.Reset()
+	for _, word := range words {
+		// 按标点符号和自然停顿分割文本
+		subSegments := s.splitTextByNaturalPauses(word.Text)
+		if len(subSegments) > 1 {
+			// 计算每个子片段的时间分配
+			totalDuration := word.End - word.Start
+			totalChars := s.countTotalChars(subSegments)
+
+			currentTime := word.Start
+			for _, segment := range subSegments {
+				if segment.Text == "" {
+					continue
+				}
+
+				// 按字符比例分配时间
+				charRatio := float64(len(segment.Text)) / float64(totalChars)
+				segmentDuration := totalDuration * charRatio
+				segmentEndTime := currentTime + segmentDuration
+
+				timeMark := TimeMark{
+					StartTime: currentTime,
+					EndTime:   segmentEndTime,
+					Text:      segment.Text,
+				}
+				timeMarks = append(timeMarks, timeMark)
+
+				currentTime = segmentEndTime
 			}
-			// 标点符号也作为一个部分
-			parts = append(parts, string(char))
-		} else if char == ' ' {
-			// 跳过空格
-			continue
 		} else {
-			current.WriteRune(char)
+			// 单个片段，直接添加
+			timeMark := TimeMark{
+				StartTime: word.Start,
+				EndTime:   word.End,
+				Text:      word.Text,
+			}
+			timeMarks = append(timeMarks, timeMark)
 		}
 	}
 
-	// 添加最后一部分
-	if current.Len() > 0 {
-		parts = append(parts, current.String())
+	return timeMarks
+}
+
+// TimeMark 时间标记结构
+type TimeMark struct {
+	StartTime float64
+	EndTime   float64
+	Text      string
+}
+
+// splitTextByNaturalPauses 按自然停顿分割文本（包括标点符号）
+func (s *WhisperService) splitTextByNaturalPauses(text string) []TextSegment {
+	var segments []TextSegment
+	current := strings.Builder{}
+	charCount := 0
+
+	for i, char := range text {
+		current.WriteRune(char)
+		charCount++
+
+		// 检测自然停顿点
+		if s.isPauseChar(char, i, text) {
+			// 保存当前片段
+			if current.Len() > 0 {
+				segments = append(segments, TextSegment{
+					Text:      strings.TrimSpace(current.String()),
+					CharCount: charCount,
+				})
+				current.Reset()
+				charCount = 0
+			}
+
+			// 标点符号也作为独立片段
+			if s.isPunctuation(char) {
+				segments = append(segments, TextSegment{
+					Text:      string(char),
+					CharCount: 1,
+				})
+			}
+		}
 	}
 
-	return parts
+	// 添加最后一段
+	if current.Len() > 0 {
+		segments = append(segments, TextSegment{
+			Text:      strings.TrimSpace(current.String()),
+			CharCount: charCount,
+		})
+	}
+
+	return s.mergeVeryShortSegments(segments)
 }
+
+// TextSegment 文本片段结构
+type TextSegment struct {
+	Text      string
+	CharCount int
+}
+
+// isPauseChar 判断是否为停顿字符
+func (s *WhisperService) isPauseChar(char rune, pos int, text string) bool {
+	// 中文标点符号
+	if char == '，' || char == '。' || char == '！' || char == '？' ||
+	   char == '；' || char == '：' || char == '、' || char == '…' {
+		return true
+	}
+
+	// 英文标点符号
+	if char == ',' || char == '.' || char == '!' || char == '?' ||
+	   char == ';' || char == ':' || char == '-' || char == '"' || char == '\'' {
+		return true
+	}
+
+	// 短语停顿（基于上下文判断）
+	if pos > 3 && pos < len(text)-3 {
+		// 检查是否为短语边界（如"然后"、"但是"等连词后）
+		if s.isPhraseBoundary(text, pos) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isPunctuation 判断是否为标点符号
+func (s *WhisperService) isPunctuation(char rune) bool {
+	punctuations := "，。！？；：、…,.!?:;'-\"'"
+	return strings.ContainsRune(punctuations, char)
+}
+
+// isPhraseBoundary 检测短语边界
+func (s *WhisperService) isPhraseBoundary(text string, pos int) bool {
+	if pos < 2 || pos >= len(text) {
+		return false
+	}
+
+	// 提取当前位置前后的文本
+	before := text[max(0, pos-2):pos]
+	after := text[pos:min(len(text), pos+2)]
+
+	// 连接词边界
+	connectors := []string{"然后", "但是", "不过", "而且", "另外", "所以", "因为",
+		"虽然", "尽管", "如果", "那么", "这样", "那么", "and", "but", "so",
+		"then", "however", "therefore", "although", "because", "if"}
+
+	for _, connector := range connectors {
+		if strings.Contains(before, connector) || strings.Contains(after, connector) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// mergeVeryShortSegments 合并过短的片段
+func (s *WhisperService) mergeVeryShortSegments(segments []TextSegment) []TextSegment {
+	if len(segments) <= 1 {
+		return segments
+	}
+
+	var merged []TextSegment
+	i := 0
+
+	for i < len(segments) {
+		current := segments[i]
+
+		// 如果片段太短（少于2个字符），尝试与下一个片段合并
+		if len([]rune(current.Text)) < 2 && i+1 < len(segments) {
+			if !s.isPunctuation(rune(current.Text[0])) {
+				// 与下一个非标点符号片段合并
+				next := segments[i+1]
+				if !s.isPunctuation(rune(next.Text[0])) {
+					merged = append(merged, TextSegment{
+						Text:      current.Text + next.Text,
+						CharCount: current.CharCount + next.CharCount,
+					})
+					i += 2
+					continue
+				}
+			}
+		}
+
+		merged = append(merged, current)
+		i++
+	}
+
+	return merged
+}
+
+// countTotalChars 计算总字符数
+func (s *WhisperService) countTotalChars(segments []TextSegment) int {
+	total := 0
+	for _, segment := range segments {
+		total += segment.CharCount
+	}
+	return total
+}
+
+// min 辅助函数
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// max 辅助函数
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 
 // getCurrentTime 获取当前时间
 func (s *WhisperService) getCurrentTime() time.Time {

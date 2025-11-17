@@ -98,16 +98,38 @@ func (s *MockService) RecognizeFile(audioPath string, language string, progressC
 		totalWords = 50 // 默认50个词
 	}
 
-	// 生成词汇和时间戳
-	for i := 0; i < totalWords; i++ {
-		// 随机选择一个词
-		word := texts[rand.Intn(len(texts))]
+	// 生成更精细的语音片段
+	currentTime := 0.0
+	segmentCount := 0
 
-		// 计算时间戳
-		startTime := float64(i) / wordsPerSecond
-		endTime := float64(i+1) / wordsPerSecond
+	// 生成多个短句片段，每个片段2-5秒
+	for currentTime < totalDuration && segmentCount < totalWords {
+		// 随机生成短句长度（2-6个词）
+		segmentWordCount := 2 + rand.Intn(5) // 2-6个词
+		var segmentWords []string
+
+		for j := 0; j < segmentWordCount && segmentCount < totalWords; j++ {
+			// 随机选择一个词
+			word := texts[rand.Intn(len(texts))]
+			segmentWords = append(segmentWords, word)
+			segmentCount++
+		}
+
+		// 计算片段时长（1-3秒之间）
+		segmentDuration := 1.0 + rand.Float64()*2.0
+		startTime := currentTime
+		endTime := currentTime + segmentDuration
+
+		// 避免超过总时长
 		if endTime > totalDuration {
 			endTime = totalDuration
+		}
+
+		// 组合成短句，添加标点符号
+		segmentText := strings.Join(segmentWords, "")
+		if rand.Float32() < 0.6 { // 60%概率添加标点符号
+			punctuations := []string{"，", "。", "！", "？"}
+			segmentText += punctuations[rand.Intn(len(punctuations))]
 		}
 
 		// 生成随机置信度
@@ -115,20 +137,20 @@ func (s *MockService) RecognizeFile(audioPath string, language string, progressC
 
 		// 添加到结果
 		mockWords = append(mockWords, models.Word{
-			Text:       word,
+			Text:       segmentText,
 			Start:      startTime,
 			End:        endTime,
 			Confidence: confidence,
 		})
 
 		// 构建文本
-		if i > 0 {
+		if segmentCount > len(segmentWords) { // 不是第一个片段
 			mockText.WriteString(" ")
 		}
-		mockText.WriteString(word)
+		mockText.WriteString(segmentText)
 
 		// 模拟进度更新
-		progress := (i + 1) * 100 / totalWords
+		progress := segmentCount * 100 / totalWords
 		if progressCallback != nil {
 			progressCallback(&models.RecognitionProgress{
 				CurrentTime: endTime,
@@ -139,8 +161,11 @@ func (s *MockService) RecognizeFile(audioPath string, language string, progressC
 			})
 		}
 
+		// 添加停顿时间（0.2-0.8秒）
+		currentTime = endTime + 0.2 + rand.Float64()*0.6
+
 		// 模拟处理时间
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(30 * time.Millisecond)
 	}
 
 	// 设置结果
