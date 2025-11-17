@@ -75,10 +75,19 @@ func (m *EmbeddedFFmpegManager) tryEmbeddedFFmpeg() (string, string) {
 		name string
 		path string
 	}{
+		// 开发环境：在项目根目录下运行
+		{"项目根目录", filepath.Join(filepath.Dir(exeDir), "ffmpeg-binaries")},
+		// 开发环境：可执行文件在 .app/Contents/MacOS 下，ffmpeg 在项目根目录
+		{"项目根目录(从app内)", filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(exeDir))), "ffmpeg-binaries")},
+		// 打包环境：同目录
 		{"同目录", filepath.Join(exeDir, "ffmpeg-binaries")},
-		{"Resources目录", filepath.Join(exeDir, "Resources", "ffmpeg-binaries")},
-		{"resources目录", filepath.Join(exeDir, "resources", "ffmpeg-binaries")},
+		// 打包环境：Resources目录
+		{"Resources目录", filepath.Join(filepath.Dir(exeDir), "Resources", "ffmpeg-binaries")},
+		{"resources目录", filepath.Join(filepath.Dir(exeDir), "resources", "ffmpeg-binaries")},
+		// 打包环境：上一级目录
 		{"上一级目录", filepath.Join(filepath.Dir(exeDir), "ffmpeg-binaries")},
+		// 额外尝试：从exeDir向上两层找到项目根目录
+		{"上两级目录", filepath.Join(filepath.Dir(filepath.Dir(exeDir)), "ffmpeg-binaries")},
 	}
 
 	for _, search := range searchPaths {
