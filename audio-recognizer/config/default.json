@@ -1,0 +1,43 @@
+{
+  "recognition": {
+    "defaultLanguage": "zh-CN",
+    "modelDirectory": "./models",
+    "autoDetectLanguage": false,
+    "confidenceThreshold": 0.5,
+    "maxAlternatives": 1,
+    "enableWordTimestamp": true,
+    "sampleRate": 16000,
+    "bufferSize": 4000
+  },
+  "audio": {
+    "sampleRate": 16000,
+    "channels": 1,
+    "format": "wav",
+    "normalize": true,
+    "removeNoise": false,
+    "silenceThreshold": -40
+  },
+  "ui": {
+    "theme": "light",
+    "language": "zh-CN",
+    "window": {
+      "width": 1200,
+      "height": 800,
+      "resizable": true,
+      "centered": true
+    },
+    "autoSave": true,
+    "showAdvancedOptions": false
+  },
+  "export": {
+    "defaultFormat": "srt",
+    "includeTimestamp": true,
+    "includeConfidence": false,
+    "outputEncoding": "utf-8"
+  },
+  "ai": {
+    "enableOptimization": true,
+    "model": "default",
+    "customPrompt": ""
+  }
+}

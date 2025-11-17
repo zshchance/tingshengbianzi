@@ -1,0 +1,19 @@
+{
+  "languages": [
+    {
+      "code": "zh-CN",
+      "name": "中文",
+      "displayName": "Chinese",
+      "model": "vosk-model-small-cn-0.22",
+      "enabled": true
+    },
+    {
+      "code": "en-US",
+      "name": "English",
+      "displayName": "English (US)",
+      "model": "vosk-model-small-en-us-0.15",
+      "enabled": true
+    }
+  ],
+  "defaultLanguage": "zh-CN"
+}
