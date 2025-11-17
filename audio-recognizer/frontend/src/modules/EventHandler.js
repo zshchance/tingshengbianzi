@@ -279,15 +279,23 @@ export class EventHandler {
                     formattedType: this.audioFileProcessor.getFormattedFileType(file.type)
                 };
 
-                // 获取音频时长（这里简化处理）
+                // 使用Wails后端已经获取的音频时长
                 try {
-                    // 对于Wails选择的文件，我们暂时跳过时长获取
-                    fileInfo.duration = 0;
-                    fileInfo.formattedDuration = '00:00';
+                    if (file.duration && file.duration > 0) {
+                        // 使用Wails后端获取的精确时长
+                        fileInfo.duration = file.duration;
+                        fileInfo.formattedDuration = this.audioFileProcessor.formatTime(file.duration);
+                        console.log('使用Wails后端获取的时长:', file.duration, '秒，格式化后:', fileInfo.formattedDuration);
+                    } else {
+                        // 如果Wails没有提供时长，设置为未知
+                        fileInfo.duration = 0;
+                        fileInfo.formattedDuration = '未知';
+                        console.log('Wails后端未提供时长信息');
+                    }
                 } catch (error) {
-                    console.warn('获取音频时长失败:', error);
+                    console.warn('处理音频时长失败:', error);
                     fileInfo.duration = 0;
-                    fileInfo.formattedDuration = '00:00';
+                    fileInfo.formattedDuration = '未知';
                 }
 
                 console.log('Wails文件信息已处理:', fileInfo);

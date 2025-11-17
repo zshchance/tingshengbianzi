@@ -12,37 +12,30 @@ import (
 	"time"
 
 	"audio-recognizer/backend/models"
+	"audio-recognizer/backend/utils"
 )
 
 // Processor 音频处理器
 type Processor struct {
-	tempDir     string
-	ffmpegPath  string
-	ffprobePath string
-	sampleRate  int
-	channels    int
+	tempDir             string
+	ffmpegPath          string
+	ffprobePath         string
+	ffmpegManager       *utils.EmbeddedFFmpegManager
+	sampleRate          int
+	channels            int
 }
 
 // NewProcessor 创建新的音频处理器
 func NewProcessor() (*Processor, error) {
-	// 查找FFmpeg路径
-	ffmpegPath, err := exec.LookPath("ffmpeg")
+	// 创建嵌入式FFmpeg管理器
+	ffmpegManager, err := utils.NewEmbeddedFFmpegManager()
 	if err != nil {
-		return nil, models.NewRecognitionError(
-			models.ErrorCodeFFmpegNotFound,
-			"FFmpeg未安装或未找到",
-			"请确保FFmpeg已安装并添加到系统PATH中",
-		)
+		return nil, fmt.Errorf("创建FFmpeg管理器失败: %w", err)
 	}
 
-	// 查找FFprobe路径
-	ffprobePath, err := exec.LookPath("ffprobe")
-	if err != nil {
-		return nil, models.NewRecognitionError(
-			models.ErrorCodeFFmpegNotFound,
-			"FFprobe未安装或未找到",
-			"请确保FFmpeg已安装并添加到系统PATH中",
-		)
+	// 验证FFmpeg是否正常工作
+	if err := ffmpegManager.ValidateFFmpeg(); err != nil {
+		return nil, fmt.Errorf("FFmpeg验证失败: %w", err)
 	}
 
 	// 创建临时目录
@@ -51,12 +44,17 @@ func NewProcessor() (*Processor, error) {
 		return nil, fmt.Errorf("创建临时目录失败: %w", err)
 	}
 
+	// 获取FFmpeg信息
+	ffmpegInfo := ffmpegManager.GetFFmpegInfo()
+	fmt.Printf("FFmpeg来源: %v\n", ffmpegInfo["source"])
+
 	return &Processor{
-		tempDir:     tempDir,
-		ffmpegPath:  ffmpegPath,
-		ffprobePath: ffprobePath,
-		sampleRate:  16000, // 默认采样率
-		channels:    1,     // 默认单声道
+		tempDir:       tempDir,
+		ffmpegPath:    ffmpegManager.GetFFmpegPath(),
+		ffprobePath:   ffmpegManager.GetFFprobePath(),
+		ffmpegManager: ffmpegManager,
+		sampleRate:    16000, // 默认采样率
+		channels:      1,     // 默认单声道
 	}, nil
 }
 
@@ -83,6 +81,37 @@ func (p *Processor) ConvertToWAV(inputPath string) (string, *models.AudioFile, e
 	outputPath := filepath.Join(p.tempDir, fmt.Sprintf("%s_converted_%d.wav", baseName, time.Now().Unix()))
 
 	// 使用FFmpeg转换音频格式
+	fmt.Printf("开始转换音频文件: %s\n", inputPath)
+	fmt.Printf("FFmpeg路径: %s\n", p.ffmpegPath)
+	fmt.Printf("输出路径: %s\n", outputPath)
+
+	// 检查输入文件是否存在
+	if _, err := os.Stat(inputPath); err != nil {
+		fmt.Printf("❌ 输入文件不存在或无法访问: %v\n", err)
+		return "", nil, models.NewRecognitionError(
+			models.ErrorCodeAudioFileNotFound,
+			"音频文件不存在",
+			fmt.Sprintf("文件路径: %s, 错误: %v", inputPath, err),
+		)
+	}
+
+	// 检查输入文件权限
+	if info, err := os.Stat(inputPath); err == nil {
+		fmt.Printf("输入文件信息: 大小=%d bytes, 权限=%v\n", info.Size(), info.Mode().Perm())
+	}
+
+	// 检查输出目录权限
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
+		fmt.Printf("❌ 无法创建输出目录: %v\n", err)
+		return "", nil, models.NewRecognitionError(
+			models.ErrorCodeAudioProcessFailed,
+			"无法创建输出目录",
+			err.Error(),
+		)
+	}
+
+	fmt.Printf("即将执行FFmpeg命令...\n")
+
 	cmd := exec.Command(p.ffmpegPath,
 		"-i", inputPath,           // 输入文件
 		"-ar", fmt.Sprintf("%d", p.sampleRate), // 设置采样率
@@ -93,15 +122,34 @@ func (p *Processor) ConvertToWAV(inputPath string) (string, *models.AudioFile, e
 		outputPath,
 	)
 
+	// 打印完整命令用于调试
+	fmt.Printf("FFmpeg命令: %s\n", cmd.String())
+
+	// 设置环境变量和工作目录
+	cmd.Dir = os.TempDir()
+
+	// 在沙盒环境中可能需要设置环境变量
+	cmd.Env = append(os.Environ(),
+		"TMPDIR="+os.TempDir(),
+		"HOME="+os.TempDir(),
+	)
+
+	fmt.Printf("FFmpeg工作目录: %s\n", cmd.Dir)
+
 	// 执行转换命令
 	output, err := cmd.CombinedOutput()
-	_ = output // 暂时忽略输出
 	if err != nil {
-		os.Remove(outputPath) // 清理临时文件
+		// 清理临时文件
+		os.Remove(outputPath)
+
+		// 输出详细的错误信息
+		errorMsg := fmt.Sprintf("FFmpeg转换失败: %v\n命令输出: %s", err, string(output))
+		fmt.Printf("音频转换错误详情:\n%s\n", errorMsg)
+
 		return "", nil, models.NewRecognitionError(
 			models.ErrorCodeAudioProcessFailed,
 			"音频格式转换失败",
-			err.Error(),
+			errorMsg,
 		)
 	}
 
