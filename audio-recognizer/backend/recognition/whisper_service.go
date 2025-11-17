@@ -208,8 +208,6 @@ func (s *WhisperService) realWhisperRecognition(audioPath string, language strin
 		"-f", wavPath,
 		"-l", whisperLang,
 		"-osrt", // 输出为SRT格式（包含时间戳）
-		"-otxt", // 也输出纯文本
-		"-bo", "2", // 打印2个候选 (best-of)
 		"-of", outputBase,
 	)
 
@@ -218,18 +216,40 @@ func (s *WhisperService) realWhisperRecognition(audioPath string, language strin
 	// 执行Whisper识别
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		fmt.Printf("Whisper CLI错误: %v\n输出: %s\n", err, string(output))
-		return s.fallbackRecognition(audioPath, language, progressCallback)
+		errorMsg := fmt.Sprintf("Whisper CLI执行失败: %v\n输出: %s", err, string(output))
+		fmt.Printf("Whisper CLI错误: %s\n", errorMsg)
+		// 返回具体的错误信息而不是回退到模拟数据
+		return nil, models.NewRecognitionError(
+			models.ErrorCodeRecognitionFailed,
+			"Whisper语音识别失败",
+			errorMsg,
+		)
 	}
 
 	// 解析生成的SRT文件以获取时间戳信息
 	srtFile := strings.TrimSuffix(wavPath, filepath.Ext(wavPath)) + ".srt"
 	defer os.Remove(srtFile) // 清理临时文件
 
+	// 检查SRT文件是否存在
+	if _, err := os.Stat(srtFile); os.IsNotExist(err) {
+		errorMsg := fmt.Sprintf("Whisper CLI未生成SRT文件: %s\n命令输出: %s", srtFile, string(output))
+		fmt.Printf("SRT文件错误: %s\n", errorMsg)
+		return nil, models.NewRecognitionError(
+			models.ErrorCodeRecognitionFailed,
+			"Whisper未生成识别结果",
+			errorMsg,
+		)
+	}
+
 	result, err := s.parseWhisperOutput(srtFile, audioInfo, language)
 	if err != nil {
-		fmt.Printf("解析Whisper输出失败: %v\n", err)
-		return s.fallbackRecognition(audioPath, language, progressCallback)
+		errorMsg := fmt.Sprintf("解析Whisper输出失败: %v\nSRT文件: %s", err, srtFile)
+		fmt.Printf("解析错误: %s\n", errorMsg)
+		return nil, models.NewRecognitionError(
+			models.ErrorCodeRecognitionFailed,
+			"解析识别结果失败",
+			errorMsg,
+		)
 	}
 
 	// 发送完成进度
@@ -246,26 +266,27 @@ func (s *WhisperService) realWhisperRecognition(audioPath string, language strin
 // mapLanguageToWhisper 将语言代码映射到Whisper支持的语言代码
 func (s *WhisperService) mapLanguageToWhisper(language string) string {
 	langMap := map[string]string{
-		"zh-CN": "zh",
-		"en-US": "en",
-		"ja":    "ja",
-		"ko":    "ko",
-		"es":    "es",
-		"fr":    "fr",
-		"de":    "de",
-		"it":    "it",
-		"pt":    "pt",
-		"ru":    "ru",
-		"ar":    "ar",
-		"hi":    "hi",
+		"zh-CN": "zh",     // 简体中文
+		"zh-TW": "zh",     // 繁体中文（Whisper使用统一的zh）
+		"en-US": "en",     // 英语
+		"ja":    "ja",     // 日语
+		"ko":    "ko",     // 韩语
+		"es":    "es",     // 西班牙语
+		"fr":    "fr",     // 法语
+		"de":    "de",     // 德语
+		"it":    "it",     // 意大利语
+		"pt":    "pt",     // 葡萄牙语
+		"ru":    "ru",     // 俄语
+		"ar":    "ar",     // 阿拉伯语
+		"hi":    "hi",     // 印地语
 	}
 
 	if whisperLang, exists := langMap[language]; exists {
 		return whisperLang
 	}
 
-	// 默认返回英文
-	return "en"
+	// 默认返回中文
+	return "zh"
 }
 
 // parseWhisperOutput 解析Whisper CLI的输出文件
@@ -306,12 +327,15 @@ func (s *WhisperService) parseWhisperOutput(srtFile string, audioInfo *models.Au
 				// 解析文本行
 				textLine := strings.TrimSpace(lines[i+2])
 				if textLine != "" {
+					// 转换为简体中文
+					simplifiedText := s.convertToSimplified(textLine)
+
 					// 解析时间戳
 					startTime, endTime := s.parseSRTPair(timestampLine)
 
 					// 添加到结果
 					wordSegments = append(wordSegments, models.WordResult{
-						Word:       textLine,
+						Word:       simplifiedText,
 						StartTime:  startTime,
 						EndTime:    endTime,
 						Confidence: 0.8, // Whisper CLI不提供置信度，使用默认值
@@ -320,7 +344,7 @@ func (s *WhisperService) parseWhisperOutput(srtFile string, audioInfo *models.Au
 					if fullText.Len() > 0 {
 						fullText.WriteString(" ")
 					}
-					fullText.WriteString(textLine)
+					fullText.WriteString(simplifiedText)
 				}
 				i += 3
 			} else {
@@ -388,6 +412,49 @@ func (s *WhisperService) parseSRTTime(timeStr string) float64 {
 // getCurrentTime 获取当前时间
 func (s *WhisperService) getCurrentTime() time.Time {
 	return time.Now()
+}
+
+// convertToSimplified 将繁体中文转换为简体中文
+func (s *WhisperService) convertToSimplified(text string) string {
+	// 常见繁简字映射表 - 使用最基础的转换
+	replacements := []struct {
+		trad, simp string
+	}{
+		{"體", "体"}, {"術", "术"}, {"語", "语"}, {"們", "们"}, {"個", "个"},
+		{"時", "时"}, {"間", "间"}, {"會", "会"}, {"話", "话"}, {"來", "来"},
+		{"這", "这"}, {"裡", "里"}, {"電", "电"}, {"腦", "脑"}, {"開", "开"},
+		{"關", "关"}, {"係", "系"}, {"選", "选"}, {"擇", "择"}, {"學", "学"},
+		{"習", "习"}, {"認", "认"}, {"識", "识"}, {"實", "实"}, {"際", "际"},
+		{"檢", "检"}, {"測", "测"}, {"試", "试"}, {"數", "数"}, {"據", "据"},
+		{"資", "资"}, {"訊", "讯"}, {"網", "网"}, {"絡", "络"}, {"連", "连"},
+		{"點", "点"}, {"線", "线"}, {"機", "机"}, {"議", "议"}, {"討", "讨"},
+		{"論", "论"}, {"發", "发"}, {"現", "现"}, {"問", "问"}, {"題", "题"},
+		{"決", "决"}, {"辦", "办"}, {"樣", "样"}, {"類", "类"}, {"狀", "状"},
+		{"況", "况"}, {"變", "变"}, {"進", "进"}, {"處", "处"}, {"應", "应"},
+		{"當", "当"}, {"須", "须"}, {"將", "将"}, {"軟", "软"}, {"遊", "游"},
+		{"戲", "戏"}, {"買", "买"}, {"賣", "卖"}, {"東", "东"}, {"裝", "装"},
+		{"備", "备"}, {"設", "设"}, {"計", "计"}, {"劃", "划"}, {"產", "产"},
+		{"開", "发"}, {"研", "究"}, {"創", "创"}, {"技", "术"}, {"科", "学"},
+		{"醫", "医"}, {"療", "疗"}, {"教", "育"}, {"藝", "艺"}, {"運", "运"},
+		{"動", "动"}, {"環", "环"}, {"境", "境"}, {"經", "经"}, {"濟", "济"},
+		{"貿", "贸"}, {"農", "农"}, {"服", "务"}, {"廣", "告"}, {"傳", "传"},
+		{"媒", "体"}, {"聞", "闻"}, {"版", "版"}, {"團", "团"}, {"組", "组"},
+		{"織", "织"}, {"構", "构"}, {"歷", "历"}, {"觀", "观"}, {"長", "长"},
+		{"鄉", "乡"}, {"鎮", "镇"}, {"縣", "县"}, {"國", "国"}, {"際", "际"},
+		{"內", "内"}, {"夥", "伙"}, {"銀", "银"}, {"保", "险"}, {"股", "票"},
+		{"場", "场"}, {"鋪", "铺"}, {"貨", "货"}, {"幣", "币"}, {"匯", "汇"},
+		{"價", "价"}, {"質", "量"}, {"規", "规"}, {"標", "标"}, {"準", "准"},
+		{"節", "节"}, {"週", "周"}, {"過", "过"}, {"經", "经"}, {"剛", "刚"},
+		{"纔", "才"}, {"現", "现"}, {"於", "于"}, {"無", "无"}, {"沒", "没"},
+		{"與", "与"}, {"種", "种"}, {"幾", "几"}, {"萬", "万"}, {"億", "亿"},
+	}
+
+	result := text
+	for _, repl := range replacements {
+		result = strings.ReplaceAll(result, repl.trad, repl.simp)
+	}
+
+	return result
 }
 
 // fallbackRecognition 回退到模拟识别
