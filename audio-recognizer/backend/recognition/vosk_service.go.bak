@@ -1,0 +1,346 @@
+package recognition
+
+import (
+	// 暂时注释掉Vosk相关导入，等待C库安装完成
+	/* "encoding/json"
+	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+
+	"audio-recognizer/backend/models"
+	"audio-recognizer/backend/audio"
+
+	"github.com/alphacep/vosk-api/go" */
+)
+
+// VoskService Vosk语音识别服务
+type VoskService struct {
+	models     map[string]*vosk.VoskModel
+	modelsLock sync.RWMutex
+	processor  *audio.Processor
+	config     *models.RecognitionConfig
+}
+
+// NewVoskService 创建新的Vosk服务
+func NewVoskService(config *models.RecognitionConfig) (*VoskService, error) {
+	// 创建音频处理器
+	processor, err := audio.NewProcessor()
+	if err != nil {
+		return nil, err
+	}
+
+	// 设置音频处理参数
+	processor.SetSampleRate(config.SampleRate)
+	processor.SetChannels(1) // Vosk需要单声道
+
+	service := &VoskService{
+		models:    make(map[string]*vosk.VoskModel),
+		processor: processor,
+		config:    config,
+	}
+
+	// 预加载默认语言模型
+	if err := service.LoadModel(config.Language, config.ModelPath); err != nil {
+		return nil, err
+	}
+
+	return service, nil
+}
+
+// LoadModel 加载语音模型
+func (s *VoskService) LoadModel(language, modelPath string) error {
+	s.modelsLock.Lock()
+	defer s.modelsLock.Unlock()
+
+	// 检查模型是否已经加载
+	if _, exists := s.models[language]; exists {
+		return nil
+	}
+
+	// 构建完整的模型路径
+	fullModelPath := filepath.Join(modelPath, language)
+
+	// 检查模型目录是否存在
+	if _, err := os.Stat(fullModelPath); os.IsNotExist(err) {
+		return models.NewRecognitionError(
+			models.ErrorCodeModelNotFound,
+			"语音模型未找到",
+			fmt.Sprintf("模型路径: %s", fullModelPath),
+		)
+	}
+
+	// 检查关键模型文件
+	requiredFiles := []string{
+		"am/final.mdl",
+		"conf/mfcc.conf",
+		"graph/HCLr.fst",
+	}
+
+	for _, file := range requiredFiles {
+		filePath := filepath.Join(fullModelPath, file)
+		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+			return models.NewRecognitionError(
+				models.ErrorCodeModelNotFound,
+				"语音模型文件不完整",
+				fmt.Sprintf("缺少文件: %s", filePath),
+			)
+		}
+	}
+
+	// 加载Vosk模型
+	model := vosk.NewModel(fullModelPath)
+	if model == nil {
+		return models.NewRecognitionError(
+			models.ErrorCodeModelLoadFailed,
+			"语音模型加载失败",
+			fmt.Sprintf("模型路径: %s", fullModelPath),
+		)
+	}
+
+	s.models[language] = model
+	return nil
+}
+
+// RecognizeFile 识别音频文件
+func (s *VoskService) RecognizeFile(audioPath string, language string, progressCallback func(*models.RecognitionProgress)) (*models.RecognitionResult, error) {
+	// 获取对应语言的模型
+	s.modelsLock.RLock()
+	model, exists := s.models[language]
+	s.modelsLock.RUnlock()
+
+	if !exists {
+		return nil, models.NewRecognitionError(
+			models.ErrorCodeModelNotFound,
+			"语音模型未加载",
+			fmt.Sprintf("语言: %s", language),
+		)
+	}
+
+	// 转换音频文件为WAV格式
+	wavPath, audioInfo, err := s.processor.ConvertToWAV(audioPath)
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(wavPath) // 清理临时文件
+
+	// 读取音频数据
+	samples, err := s.processor.ReadWAVData(wavPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// 音频标准化
+	if s.config != nil {
+		samples = s.processor.NormalizeAudio(samples)
+	}
+
+	// 创建识别器
+	recognizer := vosk.NewRecognizer(model, float64(s.config.SampleRate))
+	if recognizer == nil {
+		return nil, models.NewRecognitionError(
+			models.ErrorCodeRecognitionFailed,
+			"创建语音识别器失败",
+			"",
+		)
+	}
+	defer recognizer.Finish()
+
+	// 设置识别参数
+	if s.config.EnableWordTimestamp {
+		recognizer.SetWords(true)
+	}
+	if s.config.MaxAlternatives > 0 {
+		recognizer.SetMaxAlternatives(s.config.MaxAlternatives)
+	}
+
+	// 分块处理音频数据
+	result := &models.RecognitionResult{
+		Language:    language,
+		Duration:    audioInfo.Duration,
+		ProcessedAt: time.Now(),
+		Metadata:    make(map[string]interface{}),
+	}
+
+	var fullText strings.Builder
+	var allWords []models.WordResult
+	chunkSize := s.config.BufferSize
+	totalChunks := (len(samples) + chunkSize - 1) / chunkSize
+	processedChunks := 0
+
+	startTime := time.Now()
+
+	// 处理音频数据块
+	for i := 0; i < len(samples); i += chunkSize {
+		end := i + chunkSize
+		if end > len(samples) {
+			end = len(samples)
+		}
+
+		chunk := samples[i:end]
+
+		// 语音识别
+		if recognizer.AcceptWaveform(chunk) {
+			// 获取中间结果
+			interimResult := recognizer.Result()
+			if interimResult != "" {
+				parsedResult, err := s.parseRecognitionResult(interimResult)
+				if err == nil && parsedResult.Text != "" {
+					fullText.WriteString(parsedResult.Text)
+					allWords = append(allWords, parsedResult.Words...)
+				}
+			}
+		}
+
+		processedChunks++
+
+		// 更新进度
+		if progressCallback != nil {
+			progress := &models.RecognitionProgress{
+				CurrentTime: float64(processedChunks*chunkSize) / float64(s.config.SampleRate),
+				TotalTime:   audioInfo.Duration,
+				Percentage:  (processedChunks * 100) / totalChunks,
+				Status:      "正在识别音频...",
+			}
+			progressCallback(progress)
+		}
+	}
+
+	// 获取最终结果
+	finalResult := recognizer.FinalResult()
+	if finalResult != "" {
+		parsedResult, err := s.parseRecognitionResult(finalResult)
+		if err == nil {
+			if parsedResult.Text != "" {
+				if fullText.Len() > 0 {
+					fullText.WriteString(" ")
+				}
+				fullText.WriteString(parsedResult.Text)
+			}
+			allWords = append(allWords, parsedResult.Words...)
+		}
+	}
+
+	// 设置识别结果
+	result.Text = strings.TrimSpace(fullText.String())
+	result.Words = allWords
+
+	// 计算整体置信度
+	if len(allWords) > 0 {
+		var totalConfidence float64
+		for _, word := range allWords {
+			totalConfidence += word.Confidence
+		}
+		result.Confidence = totalConfidence / float64(len(allWords))
+	}
+
+	// 添加元数据
+	result.Metadata["audio_file"] = audioInfo.Name
+	result.Metadata["audio_format"] = audioInfo.Format
+	result.Metadata["sample_rate"] = audioInfo.SampleRate
+	result.Metadata["channels"] = audioInfo.Channels
+	result.Metadata["processing_time"] = time.Since(startTime).String()
+	result.Metadata["total_words"] = len(allWords)
+
+	return result, nil
+}
+
+// parseRecognitionResult 解析Vosk识别结果
+func (s *VoskService) parseRecognitionResult(jsonResult string) (*models.RecognitionResult, error) {
+	var result struct {
+		Text  string `json:"text"`
+		Words []struct {
+			Word  string  `json:"word"`
+			Start float64 `json:"start"`
+			End   float64 `json:"end"`
+			Conf  float64 `json:"conf"`
+		} `json:"result"`
+	}
+
+	if err := json.Unmarshal([]byte(jsonResult), &result); err != nil {
+		return nil, fmt.Errorf("解析识别结果失败: %w", err)
+	}
+
+	recognitionResult := &models.RecognitionResult{
+		Text: result.Text,
+	}
+
+	// 转换词汇结果
+	for _, word := range result.Words {
+		wordResult := models.WordResult{
+			Word:       word.Word,
+			StartTime:  word.Start,
+			EndTime:    word.End,
+			Confidence: word.Conf,
+		}
+		recognitionResult.Words = append(recognitionResult.Words, wordResult)
+	}
+
+	return recognitionResult, nil
+}
+
+// GetSupportedLanguages 获取支持的语言列表
+func (s *VoskService) GetSupportedLanguages() []string {
+	s.modelsLock.RLock()
+	defer s.modelsLock.RUnlock()
+
+	languages := make([]string, 0, len(s.models))
+	for language := range s.models {
+		languages = append(languages, language)
+	}
+	return languages
+}
+
+// IsModelLoaded 检查模型是否已加载
+func (s *VoskService) IsModelLoaded(language string) bool {
+	s.modelsLock.RLock()
+	defer s.modelsLock.RUnlock()
+
+	_, exists := s.models[language]
+	return exists
+}
+
+// UnloadModel 卸载语音模型
+func (s *VoskService) UnloadModel(language string) error {
+	s.modelsLock.Lock()
+	defer s.modelsLock.Unlock()
+
+	if model, exists := s.models[language]; exists {
+		model.Finish()
+		delete(s.models, language)
+		return nil
+	}
+
+	return fmt.Errorf("模型未加载: %s", language)
+}
+
+// UpdateConfig 更新配置
+func (s *VoskService) UpdateConfig(config *models.RecognitionConfig) {
+	s.config = config
+	if s.processor != nil {
+		s.processor.SetSampleRate(config.SampleRate)
+		s.processor.SetChannels(1)
+	}
+}
+
+// Close 关闭服务
+func (s *VoskService) Close() error {
+	s.modelsLock.Lock()
+	defer s.modelsLock.Unlock()
+
+	// 释放所有模型
+	for _, model := range s.models {
+		model.Finish()
+	}
+	s.models = make(map[string]*vosk.VoskModel)
+
+	// 清理音频处理器
+	if s.processor != nil {
+		return s.processor.Cleanup()
+	}
+
+	return nil
+}

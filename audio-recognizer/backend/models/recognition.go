@@ -1,0 +1,74 @@
+package models
+
+import "time"
+
+// RecognitionResult 语音识别结果
+type RecognitionResult struct {
+	Language    string             `json:"language"`    // 识别语言
+	Text        string             `json:"text"`        // 识别文本
+	Words       []WordResult       `json:"words"`       // 词汇级结果
+	Duration    float64            `json:"duration"`    // 音频时长(秒)
+	Confidence  float64            `json:"confidence"`  // 整体置信度
+	ProcessedAt time.Time          `json:"processedAt"` // 处理时间
+	Metadata    map[string]interface{} `json:"metadata"` // 元数据
+}
+
+// WordResult 词汇级识别结果
+type WordResult struct {
+	Word       string  `json:"word"`       // 词汇
+	StartTime  float64 `json:"startTime"`  // 开始时间(秒)
+	EndTime    float64 `json:"endTime"`    // 结束时间(秒)
+	Confidence float64 `json:"confidence"` // 置信度
+}
+
+// RecognitionProgress 识别进度
+type RecognitionProgress struct {
+	CurrentTime   float64 `json:"currentTime"`   // 当前处理时间(秒)
+	TotalTime     float64 `json:"totalTime"`     // 总时间(秒)
+	Percentage    int     `json:"percentage"`    // 完成百分比
+	Status        string  `json:"status"`        // 状态描述
+	WordsPerSec   float64 `json:"wordsPerSec"`   // 识别速度(词/秒)
+}
+
+// AudioFile 音频文件信息
+type AudioFile struct {
+	Path     string  `json:"path"`     // 文件路径
+	Name     string  `json:"name"`     // 文件名
+	Size     int64   `json:"size"`     // 文件大小(字节)
+	Duration float64 `json:"duration"` // 音频时长(秒)
+	Format   string  `json:"format"`   // 音频格式
+	SampleRate int  `json:"sampleRate"` // 采样率
+	Channels int    `json:"channels"`   // 声道数
+	BitRate  int    `json:"bitRate"`    // 比特率
+}
+
+// RecognitionConfig 识别配置
+type RecognitionConfig struct {
+	Language           string  `json:"language"`            // 识别语言
+	ModelPath          string  `json:"modelPath"`           // 模型路径
+	SampleRate         int     `json:"sampleRate"`          // 采样率
+	BufferSize         int     `json:"bufferSize"`          // 缓冲区大小
+	ConfidenceThreshold float64 `json:"confidenceThreshold"` // 置信度阈值
+	MaxAlternatives    int     `json:"maxAlternatives"`     // 最大候选数
+	EnableWordTimestamp bool   `json:"enableWordTimestamp"` // 启用词汇时间戳
+}
+
+// ExportFormat 导出格式
+type ExportFormat string
+
+const (
+	ExportFormatTXT  ExportFormat = "txt"  // 纯文本
+	ExportFormatSRT  ExportFormat = "srt"  // SRT字幕
+	ExportFormatVTT  ExportFormat = "vtt"  // WebVTT
+	ExportFormatJSON ExportFormat = "json" // JSON
+)
+
+// ExportOptions 导出选项
+type ExportOptions struct {
+	Format           ExportFormat `json:"format"`            // 导出格式
+	IncludeTimestamp bool         `json:"includeTimestamp"`  // 包含时间戳
+	IncludeConfidence bool        `json:"includeConfidence"` // 包含置信度
+	OutputEncoding   string       `json:"outputEncoding"`    // 输出编码
+	SplitText        bool         `json:"splitText"`         // 分段文本
+	MaxLineLength    int          `json:"maxLineLength"`     // 最大行长度
+}
