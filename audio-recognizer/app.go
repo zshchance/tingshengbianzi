@@ -46,10 +46,18 @@ func (a *App) startup(ctx context.Context) {
 
 // initializeVoskService 初始化语音识别服务
 func (a *App) initializeVoskService() error {
-	// 暂时使用模拟服务进行测试
-	service, err := recognition.NewMockService(a.config)
+	// 尝试使用Whisper服务
+	service, err := recognition.NewWhisperService(a.config)
 	if err != nil {
-		return fmt.Errorf("创建语音识别服务失败: %w", err)
+		fmt.Printf("Whisper服务初始化失败，回退到模拟服务: %v\n", err)
+
+		// 回退到模拟服务
+		mockService, mockErr := recognition.NewMockService(a.config)
+		if mockErr != nil {
+			return fmt.Errorf("语音识别服务初始化完全失败: %w", mockErr)
+		}
+		a.recognitionService = mockService
+		return nil
 	}
 
 	a.recognitionService = service

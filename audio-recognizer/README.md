@@ -4,12 +4,12 @@
 ![Go Version](https://img.shields.io/badge/go-%3E%3D1.21-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
 
-一个基于Go语言和Vosk引擎的跨平台音频识别桌面应用，支持多种音频格式识别，生成带时间标记的文本结果，并提供AI优化功能。
+一个基于Go语言和Whisper引擎的跨平台音频识别桌面应用，支持多种音频格式识别，生成带时间标记的文本结果，并提供AI优化功能。
 
 ## ✨ 功能特性
 
 - 🎵 **多格式音频支持** - 支持MP3、WAV、M4A、FLAC等常见音频格式
-- 🎤 **离线语音识别** - 基于Vosk引擎，无需网络连接
+- 🎤 **离线语音识别** - 基于Whisper引擎，高精度识别，无需网络连接
 - 🕐 **精确时间标记** - 生成毫秒级精确的时间戳
 - 🌍 **多语言支持** - 支持中文、英文等多种语言识别
 - ✨ **AI文本优化** - 提供智能文本优化提示词
@@ -20,7 +20,7 @@
 ## 🛠️ 技术栈
 
 - **后端框架**: Wails v2 (Go + Web技术)
-- **语音识别**: Vosk API
+- **语音识别**: Whisper.cpp API
 - **音频处理**: FFmpeg + go-audio
 - **前端技术**: HTML5 + CSS3 + JavaScript + Vite
 - **构建工具**: Go Modules + npm
@@ -99,8 +99,12 @@ go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
 ### 3. 下载语音模型
 ```bash
-# 自动下载中文和英文语音识别模型
-./scripts/download-models.sh
+# 自动下载Whisper语音识别模型
+./scripts/download-whisper-models.sh
+
+# 或手动下载Base模型（推荐）
+mkdir -p models/whisper
+curl -L https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin -o models/whisper/ggml-base.bin
 ```
 
 ### 4. 启动开发环境
@@ -176,21 +180,17 @@ audio-recognizer-v1.0.0/
 ├── audio-recognizer.app              # macOS应用包
 ├── audio-recognizer                  # Linux可执行文件
 ├── models/                           # 语音识别模型
-│   ├── zh-CN/                       # 中文模型
-│   │   ├── am/final.mdl             # 声学模型
-│   │   ├── conf/mfcc.conf           # 特征配置
-│   │   └── graph/HCLr.fst           # 语言模型
-│   └── en-US/                       # 英文模型
-│       ├── am/final.mdl
-│       ├── conf/mfcc.conf
-│       └── graph/HCLr.fst
+│   └── whisper/                      # Whisper模型目录
+│       ├── ggml-base.bin             # Base模型（推荐）
+│       ├── ggml-small.bin            # Small模型
+│       └── ggml-large.bin            # Large模型（可选）
 ├── config/                          # 配置文件
 │   ├── default.json                 # 默认配置
 │   ├── languages.json               # 语言配置
 │   └── templates.json               # AI优化模板
 ├── start.sh                         # Linux/macOS启动脚本
 ├── start.bat                        # Windows启动脚本
-├── download-models.sh               # 模型下载脚本
+├── download-whisper-models.sh       # Whisper模型下载脚本
 ├── README.md                        # 用户手册
 └── license.txt                      # 许可证文件
 ```
@@ -265,11 +265,18 @@ audio-recognizer/
 
 ### 常见问题
 
-#### 1. 模型下载失败
+#### 1. Whisper模型下载失败
 ```bash
-# 手动下载模型
-curl -L https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip -o zh-CN-model.zip
-unzip zh-CN-model.zip -d models/zh-CN/
+# 手动下载Base模型（推荐）
+mkdir -p models/whisper
+curl -L https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin -o models/whisper/ggml-base.bin
+
+# 下载其他尺寸模型
+# Small模型 - 更快，精度稍低
+curl -L https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin -o models/whisper/ggml-small.bin
+
+# Large模型 - 更高精度，需要更多资源
+curl -L https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large.bin -o models/whisper/ggml-large.bin
 ```
 
 #### 2. FFmpeg未找到
