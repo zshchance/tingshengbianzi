@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 type Processor struct {
 	tempDir     string
 	ffmpegPath  string
+	ffprobePath string
 	sampleRate  int
 	channels    int
 }
@@ -33,6 +35,16 @@ func NewProcessor() (*Processor, error) {
 		)
 	}
 
+	// 查找FFprobe路径
+	ffprobePath, err := exec.LookPath("ffprobe")
+	if err != nil {
+		return nil, models.NewRecognitionError(
+			models.ErrorCodeFFmpegNotFound,
+			"FFprobe未安装或未找到",
+			"请确保FFmpeg已安装并添加到系统PATH中",
+		)
+	}
+
 	// 创建临时目录
 	tempDir := filepath.Join(os.TempDir(), "audio-recognizer")
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
@@ -40,10 +52,11 @@ func NewProcessor() (*Processor, error) {
 	}
 
 	return &Processor{
-		tempDir:    tempDir,
-		ffmpegPath: ffmpegPath,
-		sampleRate: 16000, // 默认采样率
-		channels:   1,     // 默认单声道
+		tempDir:     tempDir,
+		ffmpegPath:  ffmpegPath,
+		ffprobePath: ffprobePath,
+		sampleRate:  16000, // 默认采样率
+		channels:    1,     // 默认单声道
 	}, nil
 }
 
@@ -109,7 +122,7 @@ func (p *Processor) ConvertToWAV(inputPath string) (string, *models.AudioFile, e
 // getAudioInfo 获取音频文件信息
 func (p *Processor) getAudioInfo(filePath string) (*models.AudioFile, error) {
 	// 使用FFprobe获取音频信息
-	cmd := exec.Command(p.ffmpegPath,
+	cmd := exec.Command(p.ffprobePath,
 		"-i", filePath,
 		"-show_format",
 		"-show_streams",
@@ -117,7 +130,7 @@ func (p *Processor) getAudioInfo(filePath string) (*models.AudioFile, error) {
 		"-print_format", "json",
 	)
 
-	_, err := cmd.Output()
+	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("获取音频信息失败: %w", err)
 	}
@@ -136,33 +149,41 @@ func (p *Processor) getAudioInfo(filePath string) (*models.AudioFile, error) {
 		audioInfo.Duration = duration
 	}
 
+	// 记录FFprobe输出用于调试
+	fmt.Printf("FFprobe输出: %s\n", string(output))
+
 	return audioInfo, nil
 }
 
 // getAudioDuration 获取音频时长
 func (p *Processor) getAudioDuration(filePath string) (float64, error) {
 	// 使用FFprobe获取音频时长
-	cmd := exec.Command(p.ffmpegPath,
+	cmd := exec.Command(p.ffprobePath,
 		"-i", filePath,
-		"-f", "null",
-		"-",
+		"-show_format",
+		"-v", "quiet",
+		"-select_streams", "a:0",
+		"-show_entries", "format=duration",
+		"-of", "csv=p=0",
 	)
 
-	output, err := cmd.CombinedOutput()
+	output, err := cmd.Output()
 	if err != nil {
 		return 0, err
 	}
 
-	// 从输出中解析时长（简化处理）
-	// 实际应该解析 "time=XX:XX:XX.XX" 格式
-	outputStr := string(output)
-	if strings.Contains(outputStr, "time=") {
-		// 这里应该使用正则表达式解析时间
-		// 暂时返回默认值
-		return 0, nil
+	// 解析时长（秒）
+	durationStr := strings.TrimSpace(string(output))
+	if durationStr == "" {
+		return 0, fmt.Errorf("无法获取音频时长")
 	}
 
-	return 0, nil
+	duration, err := strconv.ParseFloat(durationStr, 64)
+	if err != nil {
+		return 0, fmt.Errorf("解析时长失败: %w", err)
+	}
+
+	return duration, nil
 }
 
 // ReadWAVData 读取WAV文件音频数据

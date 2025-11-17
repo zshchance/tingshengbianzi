@@ -32,10 +32,40 @@ func NewWhisperService(config *models.RecognitionConfig) (*WhisperService, error
 		return nil, err
 	}
 
-	// 获取whisper-cli路径
-	whisperPath := filepath.Join(".", "backend", "recognition", "whisper-cli")
-	if _, err := os.Stat(whisperPath); os.IsNotExist(err) {
-		whisperPath = "whisper-cli" // 假设在PATH中
+	// 获取可执行文件所在目录
+	exePath, err := os.Executable()
+	if err != nil {
+		exePath = "."
+	}
+	exeDir := filepath.Dir(exePath)
+
+	// 获取whisper-cli路径（尝试多个可能的路径）
+	possiblePaths := []string{
+		filepath.Join(exeDir, "backend", "recognition", "whisper-cli"),
+		filepath.Join(".", "backend", "recognition", "whisper-cli"),
+		"backend/recognition/whisper-cli",
+		"whisper-cli", // 假设在PATH中
+	}
+
+	var whisperPath string
+	for _, path := range possiblePaths {
+		if _, err := os.Stat(path); err == nil {
+			// 转换为绝对路径
+			absPath, err := filepath.Abs(path)
+			if err == nil {
+				whisperPath = absPath
+				fmt.Printf("找到Whisper CLI: %s\n", absPath)
+				break
+			} else {
+				whisperPath = path
+				fmt.Printf("找到Whisper CLI: %s\n", path)
+				break
+			}
+		}
+	}
+
+	if whisperPath == "" {
+		return nil, fmt.Errorf("未找到whisper-cli可执行文件，请确保文件存在于backend/recognition/目录中")
 	}
 
 	service := &WhisperService{
@@ -172,18 +202,18 @@ func (s *WhisperService) realWhisperRecognition(audioPath string, language strin
 	}
 
 	// 准备Whisper CLI命令
+	outputBase := strings.TrimSuffix(wavPath, filepath.Ext(wavPath))
 	cmd := exec.Command(s.whisperPath,
 		"-m", modelPath,
 		"-f", wavPath,
 		"-l", whisperLang,
 		"-osrt", // 输出为SRT格式（包含时间戳）
 		"-otxt", // 也输出纯文本
-		"-p", "2", // 打印2个候选
-		"--output-file", strings.TrimSuffix(wavPath, filepath.Ext(wavPath)),
+		"-bo", "2", // 打印2个候选 (best-of)
+		"-of", outputBase,
 	)
 
-	// 设置超时和资源限制
-	cmd.Dir = os.TempDir()
+	// 不设置工作目录，使用绝对路径来避免路径问题
 
 	// 执行Whisper识别
 	output, err := cmd.CombinedOutput()
