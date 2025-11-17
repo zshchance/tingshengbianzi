@@ -409,7 +409,8 @@ ${result.text}
 
             switch (type) {
                 case 'original':
-                    content = this.currentResult.text || '';
+                    // 使用UIController的方法生成带时间戳的纯文本
+                    content = this.uiController.generateOriginalTextWithTimestamps(this.currentResult) || '';
                     break;
                 case 'ai':
                     content = this.generateAIOptimizedPrompt(this.currentResult);

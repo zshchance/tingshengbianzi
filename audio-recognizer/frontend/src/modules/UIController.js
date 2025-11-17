@@ -498,7 +498,22 @@ export class UIController {
                 content = this.generateOriginalTextWithTimestamps(result);
         }
 
-        resultDisplay.innerHTML = this.escapeHtml(content);
+              // 检查是否为纯文本格式（包含时间戳的文本）
+        if (tab === 'original' && content.includes('[') && content.includes(']') && this.containsTimestamps(content)) {
+            // 纯文本显示，保持原始格式
+            resultDisplay.style.whiteSpace = 'pre-wrap';
+            resultDisplay.style.fontFamily = 'monospace';
+            resultDisplay.style.fontSize = '14px';
+            resultDisplay.style.lineHeight = '1.6';
+            resultDisplay.textContent = content;
+        } else {
+            // HTML内容显示
+            resultDisplay.style.whiteSpace = 'normal';
+            resultDisplay.style.fontFamily = '';
+            resultDisplay.style.fontSize = '';
+            resultDisplay.style.lineHeight = '';
+            resultDisplay.innerHTML = this.escapeHtml(content);
+        }
     }
 
     /**
@@ -509,73 +524,38 @@ export class UIController {
     generateOriginalTextWithTimestamps(result) {
         if (!result) return '';
 
-        // 如果结果文本已经包含时间戳，直接显示
+        // 生成精简的带时间戳的文本，不包含HTML标签
+        let resultText = '';
+
+        // 如果结果文本已经包含时间戳，直接使用
         if (result.text && this.containsTimestamps(result.text)) {
-            let text = '<div class="transcript-result">';
-            text += this.formatTextWithTimestamps(result.text);
-            text += '</div>';
-
-            // 添加词汇级详细信息
-            if (result.words && Array.isArray(result.words) && result.words.length > 0) {
-                text += '<div class="word-details" style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">';
-                text += '<h4>词汇详细信息：</h4>';
-                text += '<div class="word-list">';
-
-                result.words.forEach((word, index) => {
-                    if (word.text || word.word) {
-                        const wordText = word.text || word.word;
-                        const startTime = word.start !== undefined ? this.formatTimestamp(word.start) : '';
-                        const endTime = word.end !== undefined ? this.formatTimestamp(word.end) : '';
-                        const confidence = word.confidence !== undefined ? (word.confidence * 100).toFixed(1) : '';
-
-                        text += `<div class="word-item" data-index="${index}" style="margin-bottom: 8px; padding: 5px; background: white; border-radius: 4px;">`;
-                        if (startTime) {
-                            text += `<span class="word-timestamp" style="color: #007bff; font-weight: bold;">[${startTime}]</span> `;
-                        }
-                        text += `<span class="word-text" style="font-size: 14px;">${this.escapeHtml(wordText)}</span>`;
-                        if (confidence) {
-                            text += ` <span class="word-confidence" style="color: #6c757d; font-size: 12px;">(${confidence}%)</span>`;
-                        }
-                        text += '</div>';
-                    }
-                });
-
-                text += '</div>';
-                text += '</div>';
-            }
-
-            return text;
+            resultText = result.text;
         }
-
         // 如果有words数组但没有时间戳，生成带时间戳的文本
-        if (result.words && Array.isArray(result.words) && result.words.length > 0) {
-            let text = '<div class="transcript-result">';
+        else if (result.words && Array.isArray(result.words) && result.words.length > 0) {
+            let textLines = [];
 
-            result.words.forEach((word, index) => {
+            result.words.forEach((word) => {
                 const wordText = word.text || word.word;
                 if (wordText) {
                     const startTime = word.start !== undefined ? word.start : word.startTime;
-                    const endTime = word.end !== undefined ? word.end : word.endTime;
-
-                    text += `<div class="word-segment" data-index="${index}" style="margin-bottom: 8px;">`;
                     if (startTime !== undefined) {
-                        text += `<span class="timestamp" style="color: #007bff; font-weight: bold; font-family: monospace;">[${this.formatTimestamp(startTime)}]</span> `;
+                        const timestamp = this.formatTimestamp(startTime);
+                        textLines.push(`${timestamp} ${wordText}`);
+                    } else {
+                        textLines.push(wordText);
                     }
-                    text += `<span class="word-text">${this.escapeHtml(wordText)}</span>`;
-                    text += '</div>';
                 }
             });
 
-            text += '</div>';
-            text += `<div class="full-text" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
-                <strong>完整文本：</strong><br>${this.escapeHtml(result.text || '')}
-            </div>`;
-
-            return text;
+            resultText = textLines.join('\n');
+        }
+        // 如果没有时间戳信息，返回普通文本
+        else {
+            resultText = result.text || '';
         }
 
-        // 如果没有words数组，返回普通文本
-        return result.text || '';
+        return resultText;
     }
 
     /**

@@ -402,30 +402,71 @@ func (s *WhisperService) addTimestampsToText(text string, words []models.Word) s
 	}
 
 	var result strings.Builder
-	textWords := strings.Fields(text) // 按空格分割文本
 
-	wordIndex := 0
-	for i, textWord := range textWords {
-		if wordIndex < len(words) {
-			// 在每个词汇前添加时间戳
-			timestamp := utils.FormatTimestamp(words[wordIndex].Start)
-			if i > 0 {
+	// 如果只有一个词且包含多个字符，按标点符号分割
+	if len(words) == 1 {
+		// 尝试按标点符号分割文本
+		parts := s.splitTextByPunctuation(words[0].Text)
+		if len(parts) > 1 {
+			// 为每个部分添加时间戳
+			for i, part := range parts {
+				if part == "" {
+					continue
+				}
+				if i > 0 {
+					result.WriteString(" ")
+				}
+				timestamp := utils.FormatTimestamp(words[0].Start + float64(i)*0.5) // 简单的时间分配
+				result.WriteString(timestamp)
 				result.WriteString(" ")
+				result.WriteString(part)
 			}
-			result.WriteString(timestamp)
-			result.WriteString(" ")
-			result.WriteString(textWord)
-			wordIndex++
-		} else {
-			// 如果没有对应的词汇信息，直接添加文本
-			if i > 0 {
-				result.WriteString(" ")
-			}
-			result.WriteString(textWord)
+			return result.String()
 		}
 	}
 
+	// 正常情况：为每个词添加时间戳
+	for i, word := range words {
+		if i > 0 {
+			result.WriteString(" ")
+		}
+		timestamp := utils.FormatTimestamp(word.Start)
+		result.WriteString(timestamp)
+		result.WriteString(" ")
+		result.WriteString(word.Text)
+	}
+
 	return result.String()
+}
+
+// splitTextByPunctuation 按标点符号分割文本
+func (s *WhisperService) splitTextByPunctuation(text string) []string {
+	var parts []string
+	current := strings.Builder{}
+
+	for _, char := range text {
+		if char == '，' || char == '。' || char == '！' || char == '？' || char == ',' || char == '.' || char == '!' || char == '?' {
+			// 遇到标点符号，保存当前部分
+			if current.Len() > 0 {
+				parts = append(parts, current.String())
+				current.Reset()
+			}
+			// 标点符号也作为一个部分
+			parts = append(parts, string(char))
+		} else if char == ' ' {
+			// 跳过空格
+			continue
+		} else {
+			current.WriteRune(char)
+		}
+	}
+
+	// 添加最后一部分
+	if current.Len() > 0 {
+		parts = append(parts, current.String())
+	}
+
+	return parts
 }
 
 // getCurrentTime 获取当前时间
