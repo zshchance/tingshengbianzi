@@ -111,6 +111,7 @@ import { useAudioFile } from './composables/useAudioFile'
 import { useWails } from './composables/useWails'
 import { useSettings } from './composables/useSettings'
 import { generateFineGrainedTimestampedText } from './utils/timeFormatter'
+import { generateFineGrainedTimestampedText as generateEnhancedTimestamps, optimizeSpeedAnalysis } from './utils/fineGrainedTimestamps'
 import { EventsOn } from '../wailsjs/runtime/runtime.js'
 import ToastContainer from './components/ToastContainer.vue'
 import ProgressBar from './components/ProgressBar.vue'
@@ -872,12 +873,42 @@ const setupGlobalWailsEvents = () => {
           .join(' ')
       }
 
-      // 生成带细颗粒度时间戳的文本（参考老版本实现）
-      if (response.result.segments || response.result.words) {
-        response.result.timestampedText = generateFineGrainedTimestampedText(
+      // 生成带细颗粒度时间戳的文本（使用新的时间插值算法）
+      if (response.result.segments) {
+        console.log('🎯 开始生成细颗粒度时间戳，segments:', response.result.segments.length, '个')
+
+        // 优化语速分析
+        const totalDuration = response.result.duration ||
+          (response.result.segments[response.result.segments.length - 1]?.end || 0)
+        const language = response.result.language || 'zh-CN'
+
+        console.log('🔊 语速分析参数:', {
+          totalDuration,
+          language,
+          segmentsCount: response.result.segments.length
+        })
+
+        // 使用细颗粒度时间标记组件生成更精确的时间戳
+        response.result.timestampedText = generateEnhancedTimestamps(
           response.result.segments,
-          response.result.words
+          {
+            minSegmentLength: 6,  // 最小片段长度
+            maxSegmentLength: 15, // 最大片段长度
+            averageSpeed: optimizeSpeedAnalysis(
+              response.result.segments.map(s => s.text).join(' '),
+              totalDuration,
+              language
+            )
+          }
         )
+
+        console.log('✅ 细颗粒度时间戳生成完成:', {
+          timestampedTextLength: response.result.timestampedText?.length || 0,
+          hasTimestampedText: !!response.result.timestampedText,
+          preview: response.result.timestampedText?.substring(0, 100) || '无内容'
+        })
+      } else {
+        console.warn('⚠️ 没有segments数据，无法生成细颗粒度时间戳')
       }
 
       recognitionResult.value = response.result

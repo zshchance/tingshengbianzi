@@ -83,6 +83,13 @@
           <div v-else class="content-text" v-html="formattedAIContent"></div>
         </div>
 
+        <!-- 细颗粒度时间戳 -->
+        <div v-else-if="activeTab === 'fineGrained'" class="content-display">
+          <div class="fine-grained-content-display">
+            <div class="content-text" v-html="formattedFineGrainedContent"></div>
+          </div>
+        </div>
+
         <!-- 字幕模式 -->
         <div v-else-if="activeTab === 'subtitle'" class="content-display">
           <div class="subtitle-content-display">
@@ -147,16 +154,20 @@ const aiOptimizedContent = ref('')
 const tabs = [
   { id: 'original', label: '原始结果', icon: '📄' },
   { id: 'ai', label: 'AI优化', icon: '✨' },
+  { id: 'fineGrained', label: '细颗粒度', icon: '⏱️' },
   { id: 'subtitle', label: '字幕模式', icon: '🎵' }
 ]
 
 // 计算属性
 const currentContent = computed(() => {
   if (activeTab.value === 'original') {
-    // 优先使用带时间戳的文本，如果没有则使用普通文本
-    return props.recognitionResult?.timestampedText || props.recognitionResult?.text || ''
+    // 原始结果只显示纯文本，不带时间戳
+    return props.recognitionResult?.text || ''
   } else if (activeTab.value === 'ai') {
     return aiOptimizedContent.value
+  } else if (activeTab.value === 'fineGrained') {
+    // 细颗粒度显示带高精度时间戳的文本
+    return props.recognitionResult?.timestampedText || ''
   } else if (activeTab.value === 'subtitle') {
     return props.recognitionResult?.segments || []
   }
@@ -198,14 +209,11 @@ const subtitleSegments = computed(() => {
 })
 
 const formattedOriginalContent = computed(() => {
-  // 优先使用带时间戳的文本
-  let text = props.recognitionResult?.timestampedText || props.recognitionResult?.text || ''
+  // 原始结果只显示纯文本，不处理时间戳
+  let text = props.recognitionResult?.text || ''
   if (!text) return ''
 
-  // 高亮时间戳并格式化
-  const highlightedText = highlightTimestamps(text)
-
-  return highlightedText
+  return text
     .split('\n')
     .filter(line => line.trim())
     .map(line => `<p>${line.trim()}</p>`)
@@ -220,6 +228,23 @@ const formattedAIContent = computed(() => {
     .split('\n')
     .filter(line => line.trim())
     .map(line => `<p>${line.trim()}</p>`)
+    .join('')
+})
+
+const formattedFineGrainedContent = computed(() => {
+  const text = props.recognitionResult?.timestampedText || ''
+  if (!text) return ''
+
+  // 高亮时间戳并格式化为段落
+  const highlightedText = text.replace(
+    /\[(\d{2}:\d{2}:\d{2}\.\d{3})\]/g,
+    '<span class="fine-grained-timestamp">[$1]</span>'
+  )
+
+  return highlightedText
+    .split('\n')
+    .filter(line => line.trim())
+    .map(line => `<p class="fine-grained-line">${line.trim()}</p>`)
     .join('')
 })
 
@@ -252,25 +277,25 @@ const formattedSubtitleContent = computed(() => {
     if (showTimestamps.value) {
       if (subtitleFormat.value === 'srt') {
         return `<div class="subtitle-entry">
-          <div class="subtitle-timestamp srt-timestamp">${formatSRTTime(segment.start)} --> ${formatSRTTime(segment.end)}</div>
-          <div class="subtitle-text">${segmentText}</div>
+          <span class="subtitle-timestamp srt-timestamp">${formatSRTTime(segment.start)} --> ${formatSRTTime(segment.end)}</span>
+          <span class="subtitle-text">${segmentText}</span>
         </div>`
       } else if (subtitleFormat.value === 'vtt') {
         return `<div class="subtitle-entry">
-          <div class="subtitle-timestamp vtt-timestamp">${formatWebVTTTime(segment.start)} --> ${formatWebVTTTime(segment.end)}</div>
-          <div class="subtitle-text">${segmentText}</div>
+          <span class="subtitle-timestamp vtt-timestamp">${formatWebVTTTime(segment.start)} --> ${formatWebVTTTime(segment.end)}</span>
+          <span class="subtitle-text">${segmentText}</span>
         </div>`
       } else {
         // 简单格式
         return `<div class="subtitle-entry">
-          <div class="subtitle-timestamp simple-timestamp">${formatTimestamp(segment.start).replace(/[\[\]]/g, '')}</div>
-          <div class="subtitle-text">${segmentText}</div>
+          <span class="subtitle-timestamp simple-timestamp">${formatTimestamp(segment.start).replace(/[\[\]]/g, '')}</span>
+          <span class="subtitle-text">${segmentText}</span>
         </div>`
       }
     } else {
       // 隐藏时间戳，只显示文本
       return `<div class="subtitle-entry">
-        <div class="subtitle-text">${segmentText}</div>
+        <span class="subtitle-text">${segmentText}</span>
       </div>`
     }
   })
@@ -288,6 +313,8 @@ const copyToClipboard = async () => {
       textToCopy = props.recognitionResult?.text || ''
     } else if (activeTab.value === 'ai') {
       textToCopy = aiOptimizedContent.value
+    } else if (activeTab.value === 'fineGrained') {
+      textToCopy = props.recognitionResult?.timestampedText || ''
     } else if (activeTab.value === 'subtitle') {
       // 从格式化字幕内容生成纯文本用于复制
       const segments = props.recognitionResult?.segments || []
@@ -301,9 +328,9 @@ const copyToClipboard = async () => {
 
           if (showTimestamps.value) {
             if (subtitleFormat.value === 'srt') {
-              return `${formatSRTTime(segment.start)} --> ${formatSRTTime(segment.end)}\n${segmentText}`
+              return `${formatSRTTime(segment.start)} --> ${formatSRTTime(segment.end)} ${segmentText}`
             } else if (subtitleFormat.value === 'vtt') {
-              return `${formatWebVTTTime(segment.start)} --> ${formatWebVTTTime(segment.end)}\n${segmentText}`
+              return `${formatWebVTTTime(segment.start)} --> ${formatWebVTTTime(segment.end)} ${segmentText}`
             } else {
               // 简单格式
               return `${formatTimestamp(segment.start).replace(/[\[\]]/g, '')} ${segmentText}`
@@ -314,7 +341,7 @@ const copyToClipboard = async () => {
           }
         })
 
-        textToCopy = copyLines.join('\n\n')
+        textToCopy = copyLines.join('\n')
       }
     }
 
@@ -351,31 +378,34 @@ const exportResult = () => {
   let exportFormat = 'txt'
 
   if (activeTab.value === 'subtitle') {
-    // 生成导出内容，格式与复制功能相同
+    // 生成导出内容，格式与复制功能相同，避免多余空行
     const segments = props.recognitionResult?.segments || []
-    let exportText = ''
+    const validSegments = segments.filter(segment => segment.text && segment.text.trim())
 
-    segments.forEach((segment) => {
-      if (segment.text && segment.text.trim()) {
+    if (validSegments.length === 0) {
+      exportContent = ''
+    } else {
+      const exportLines = validSegments.map((segment) => {
         const segmentText = segment.text.trim()
 
         if (showTimestamps.value) {
           if (subtitleFormat.value === 'srt') {
-            exportText += `${formatSRTTime(segment.start)} --> ${formatSRTTime(segment.end)}\n${segmentText}\n\n`
+            return `${formatSRTTime(segment.start)} --> ${formatSRTTime(segment.end)} ${segmentText}`
           } else if (subtitleFormat.value === 'vtt') {
-            exportText += `${formatWebVTTTime(segment.start)} --> ${formatWebVTTTime(segment.end)}\n${segmentText}\n\n`
+            return `${formatWebVTTTime(segment.start)} --> ${formatWebVTTTime(segment.end)} ${segmentText}`
           } else {
             // 简单格式
-            exportText += `${formatTimestamp(segment.start).replace(/[\[\]]/g, '')} ${segmentText}\n\n`
+            return `${formatTimestamp(segment.start).replace(/[\[\]]/g, '')} ${segmentText}`
           }
         } else {
           // 隐藏时间戳，只显示文本
-          exportText += `${segmentText}\n\n`
+          return segmentText
         }
-      }
-    })
+      })
 
-    exportContent = exportText.trim()
+      exportContent = exportLines.join('\n')
+    }
+
     exportFormat = subtitleFormat.value
   } else {
     exportContent = currentContent.value
@@ -611,13 +641,38 @@ defineExpose({
 
 
 .subtitle-content-display {
+  padding: 16px;
+}
+
+.fine-grained-content-display {
   padding: 20px;
 }
 
+.fine-grained-timestamp {
+  color: #0066cc;
+  font-weight: bold;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  background-color: #f0f8ff;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 13px;
+}
+
+.fine-grained-line {
+  margin: 0 0 4px 0;
+  line-height: 1.5;
+  font-size: 15px;
+  color: var(--text-primary, #1f2937);
+}
+
 .subtitle-entry {
-  margin-bottom: 20px;
-  padding-bottom: 16px;
+  margin-bottom: 6px;
+  padding-bottom: 2px;
   border-bottom: 1px solid var(--border-color, #e5e7eb);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .subtitle-entry:last-child {
@@ -630,10 +685,11 @@ defineExpose({
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 13px;
   font-weight: 500;
-  margin-bottom: 8px;
-  padding: 4px 8px;
+  padding: 2px 6px;
   border-radius: 4px;
   display: inline-block;
+  flex-shrink: 0;
+  margin: 0;
 }
 
 .srt-timestamp {
@@ -655,9 +711,13 @@ defineExpose({
 }
 
 .subtitle-text {
-  line-height: 1.6;
+  line-height: 1.4;
   color: var(--text-primary, #1f2937);
   font-size: 15px;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-width: 0;
 }
 
 /* 深色模式支持 */
@@ -681,6 +741,15 @@ defineExpose({
   }
 
   .subtitle-text {
+    color: var(--text-primary-dark, #f3f4f6);
+  }
+
+  .fine-grained-timestamp {
+    color: #60a5fa;
+    background-color: #1e3a8a;
+  }
+
+  .fine-grained-line {
     color: var(--text-primary-dark, #f3f4f6);
   }
 }

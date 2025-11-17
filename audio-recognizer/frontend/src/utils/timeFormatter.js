@@ -17,12 +17,26 @@ export function timeStringToSeconds(timeString) {
 
     // 处理ISO时间格式 "1970-01-01T08:00:00+08:00"
     if (typeof timeString === 'string' && timeString.includes('T')) {
+      // 特殊处理：如果是1970-01-01格式，提取时间部分作为当天的秒数
+      if (timeString.includes('1970-01-01')) {
+        // 提取时间部分 "08:00:00"
+        const timeMatch = timeString.match(/T(\d{2}):(\d{2}):(\d{2})/)
+        if (timeMatch) {
+          const hours = parseInt(timeMatch[1], 10)
+          const minutes = parseInt(timeMatch[2], 10)
+          const seconds = parseInt(timeMatch[3], 10)
+          return hours * 3600 + minutes * 60 + seconds
+        }
+      }
+
+      // 其他ISO时间格式，计算当天的秒数
       const date = new Date(timeString)
       if (isNaN(date.getTime())) {
         console.warn('无效的时间字符串:', timeString)
         return 0
       }
-      return date.getTime() / 1000 // 转换为秒数
+      // 计算从当天0点开始的秒数
+      return date.getHours() * 3600 + date.getMinutes() * 60 + date.getSeconds() + date.getMilliseconds() / 1000
     }
 
     // 处理纯数字字符串
