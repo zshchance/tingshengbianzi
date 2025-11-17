@@ -486,7 +486,7 @@ export class UIController {
 
         switch (tab) {
             case 'original':
-                content = result.text || '';
+                content = this.generateOriginalTextWithTimestamps(result);
                 break;
             case 'ai':
                 content = this.generateAIOptimizedText(result);
@@ -495,10 +495,61 @@ export class UIController {
                 content = this.generateSubtitleFormat(result);
                 break;
             default:
-                content = result.text || '';
+                content = this.generateOriginalTextWithTimestamps(result);
         }
 
         resultDisplay.innerHTML = this.escapeHtml(content);
+    }
+
+    /**
+     * 生成带时间戳的原始文本
+     * @param {Object} result - 识别结果
+     * @returns {string} 带时间戳的文本
+     */
+    generateOriginalTextWithTimestamps(result) {
+        if (!result) return '';
+
+        // 如果有words数组，生成带时间戳的文本
+        if (result.words && Array.isArray(result.words) && result.words.length > 0) {
+            let text = '<div class="transcript-result">';
+
+            result.words.forEach((word, index) => {
+                if (word.word) {
+                    const startTime = word.startTime !== undefined ? this.formatDisplayTime(word.startTime) : '';
+                    const endTime = word.endTime !== undefined ? this.formatDisplayTime(word.endTime) : '';
+
+                    text += `<div class="word-segment" data-index="${index}">`;
+                    if (startTime) {
+                        text += `<span class="timestamp">[${startTime}]</span> `;
+                    }
+                    text += `<span class="word-text">${this.escapeHtml(word.word)}</span>`;
+                    text += '</div>';
+                }
+            });
+
+            text += '</div>';
+            text += `<div class="full-text" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
+                <strong>完整文本：</strong><br>${this.escapeHtml(result.text || '')}
+            </div>`;
+
+            return text;
+        }
+
+        // 如果没有words数组，返回普通文本
+        return result.text || '';
+    }
+
+    /**
+     * 格式化显示时间
+     * @param {number} seconds - 秒数
+     * @returns {string} 格式化的时间字符串
+     */
+    formatDisplayTime(seconds) {
+        const minutes = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        const ms = Math.floor((seconds % 1) * 100);
+
+        return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(ms).padStart(2, '0')}`;
     }
 
     /**
@@ -643,14 +694,38 @@ ${result.text}
      * @returns {string} 字幕格式文本
      */
     generateSubtitleFormat(result) {
-        if (!result || !result.text) {
-            return '';
+        if (!result || !result.words || !Array.isArray(result.words)) {
+            return result.text || '';
         }
 
-        // 简单的字幕格式转换
-        return result.text
-            .replace(/\[(\d{2}):(\d{2}):(\d{2})\.(\d{3})\]/g, '$1:$2:$3,$4')
-            .replace(/(\d{2}):(\d{2}):(\d{2}),(\d{3}) (.+)/g, '$1:$2:$3,$4\n$5\n');
+        // 使用words数组中的时间信息生成SRT格式字幕
+        let subtitle = '';
+        result.words.forEach((word, index) => {
+            if (word.word && word.startTime !== undefined && word.endTime !== undefined) {
+                const startTime = this.formatSRTTime(word.startTime);
+                const endTime = this.formatSRTTime(word.endTime);
+
+                subtitle += `${index + 1}\n`;
+                subtitle += `${startTime} --> ${endTime}\n`;
+                subtitle += `${word.word}\n\n`;
+            }
+        });
+
+        return subtitle.trim() || result.text || '';
+    }
+
+    /**
+     * 格式化SRT时间
+     * @param {number} seconds - 秒数
+     * @returns {string} SRT时间格式
+     */
+    formatSRTTime(seconds) {
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = Math.floor(seconds % 60);
+        const ms = Math.floor((seconds % 1) * 1000);
+
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
     }
 
     /**

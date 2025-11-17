@@ -1,5 +1,48 @@
 /* 应用特定的样式补充 */
 
+/* 时间戳和转录结果样式 */
+.transcript-result {
+    line-height: 1.6;
+    margin-bottom: 20px;
+}
+
+.word-segment {
+    display: block;
+    margin-bottom: 8px;
+    padding: 4px 0;
+    transition: background-color 0.2s ease;
+}
+
+.word-segment:hover {
+    background-color: var(--background-light);
+    border-radius: 4px;
+    padding: 4px 8px;
+}
+
+.timestamp {
+    color: var(--primary-color);
+    font-weight: bold;
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 0.9em;
+    background-color: var(--background-light);
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-right: 8px;
+}
+
+.word-text {
+    color: var(--text-primary);
+    font-size: 1.05em;
+}
+
+.full-text {
+    background-color: var(--background-light);
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 20px;
+    border-left: 4px solid var(--primary-color);
+}
+
 /* 加载动画 */
 .loading-spinner {
     display: inline-block;
