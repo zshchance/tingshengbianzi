@@ -76,6 +76,7 @@ type AudioFile struct {
 type RecognitionConfig struct {
 	Language           string  `json:"language"`            // 识别语言
 	ModelPath          string  `json:"modelPath"`           // 模型路径
+	SpecificModelFile  string  `json:"specificModelFile"`  // 具体指定的模型文件
 	SampleRate         int     `json:"sampleRate"`          // 采样率
 	BufferSize         int     `json:"bufferSize"`          // 缓冲区大小
 	ConfidenceThreshold float64 `json:"confidenceThreshold"` // 置信度阈值

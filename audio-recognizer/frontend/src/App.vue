@@ -325,6 +325,7 @@ const startRecognition = async () => {
     const recognitionRequest = {
       filePath: filePath,
       language: settings.recognitionLanguage || 'zh-CN', // 从设置中获取，默认中文
+      specificModelFile: settings.specificModelFile || '', // 添加用户指定的模型文件
       options: {
         ModelPath: settings.modelPath || './models',
         EnableWordTimestamp: settings.enableWordTimestamp !== false,

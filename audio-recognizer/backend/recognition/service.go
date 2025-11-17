@@ -10,6 +10,9 @@ type RecognitionService interface {
 	// RecognizeFile 识别音频文件
 	RecognizeFile(audioPath string, language string, progressCallback func(*models.RecognitionProgress)) (*models.RecognitionResult, error)
 
+	// RecognizeFileWithModel 使用指定模型文件识别音频文件
+	RecognizeFileWithModel(audioPath string, language string, specificModelFile string, progressCallback func(*models.RecognitionProgress)) (*models.RecognitionResult, error)
+
 	// GetSupportedLanguages 获取支持的语言列表
 	GetSupportedLanguages() []string
 

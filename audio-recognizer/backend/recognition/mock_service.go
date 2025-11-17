@@ -198,6 +198,13 @@ func (s *MockService) RecognizeFile(audioPath string, language string, progressC
 	return result, nil
 }
 
+// RecognizeFileWithModel 使用指定模型文件模拟识别音频文件
+func (s *MockService) RecognizeFileWithModel(audioPath string, language string, specificModelFile string, progressCallback func(*models.RecognitionProgress)) (*models.RecognitionResult, error) {
+	// Mock服务忽略具体的模型文件，调用原有的识别方法
+	fmt.Printf("🎯 Mock服务: 忽略指定模型文件 %s，使用模拟识别\n", specificModelFile)
+	return s.RecognizeFile(audioPath, language, progressCallback)
+}
+
 // getMockTexts 获取模拟文本词汇
 func (s *MockService) getMockTexts(language string) []string {
 	switch language {

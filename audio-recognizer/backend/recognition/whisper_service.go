@@ -16,6 +16,27 @@ import (
 	"audio-recognizer/backend/utils"
 )
 
+// formatFileSize 格式化文件大小
+func formatFileSize(bytes int64) string {
+	if bytes == 0 {
+		return "0 B"
+	}
+
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+
+	units := []string{"KB", "MB", "GB", "TB"}
+	return fmt.Sprintf("%.1f %s", float64(bytes)/float64(div), units[exp])
+}
+
 // WhisperService Whisper语音识别服务
 type WhisperService struct {
 	processor     *audio.Processor
@@ -170,17 +191,67 @@ func (s *WhisperService) realWhisperRecognition(audioPath string, language strin
 
 	// 查找Whisper模型文件
 	modelPath := ""
-	possiblePaths := []string{
-		filepath.Join(s.config.ModelPath, "whisper", "ggml-base.bin"),
-		filepath.Join(s.config.ModelPath, "ggml-base.bin"),
-		"./models/whisper/ggml-base.bin",
-		"./models/ggml-base.bin",
+
+	// 首先检查是否指定了具体的模型文件
+	if s.config.SpecificModelFile != "" {
+		if _, err := os.Stat(s.config.SpecificModelFile); err == nil {
+			modelPath = s.config.SpecificModelFile
+			fmt.Printf("✅ 使用指定的模型文件: %s\n", modelPath)
+		} else {
+			fmt.Printf("⚠️ 指定的模型文件不存在: %s，将使用默认查找逻辑\n", s.config.SpecificModelFile)
+		}
 	}
 
-	for _, path := range possiblePaths {
-		if _, err := os.Stat(path); err == nil {
-			modelPath = path
-			break
+	// 如果指定的模型文件不存在，则使用智能查找逻辑
+	if modelPath == "" {
+		// 首先尝试在指定目录中查找所有可用的模型文件
+		modelDir := s.config.ModelPath
+		if s.config.SpecificModelFile != "" {
+			// 如果用户指定了具体文件但不存在，只在该目录下查找
+			modelDir = filepath.Dir(s.config.SpecificModelFile)
+		}
+
+		// 获取模型目录下的所有.bin文件
+		var availableModels []string
+		if files, err := os.ReadDir(modelDir); err == nil {
+			for _, file := range files {
+				if strings.HasSuffix(file.Name(), ".bin") {
+					fullPath := filepath.Join(modelDir, file.Name())
+					if info, err := os.Stat(fullPath); err == nil && !info.IsDir() {
+						availableModels = append(availableModels, fullPath)
+						fmt.Printf("🔍 发现可用模型: %s (%s)\n", file.Name(), formatFileSize(info.Size()))
+					}
+				}
+			}
+		}
+
+		// 优先级选择模型（按质量和大小排序）
+		preferredOrder := []string{
+			"ggml-large-v3.bin", "ggml-large-v2.bin", "ggml-large-v1.bin", "ggml-large.bin",
+			"ggml-medium.bin",
+			"ggml-small.bin",
+			"ggml-base.bin",
+			"ggml-tiny.bin",
+		}
+
+		// 按优先级查找模型
+		for _, preferred := range preferredOrder {
+			for _, available := range availableModels {
+				if strings.HasSuffix(available, preferred) {
+					modelPath = available
+					fmt.Printf("✅ 选择模型文件: %s\n", modelPath)
+					break
+				}
+			}
+			if modelPath != "" {
+				break
+			}
+		}
+
+		// 如果没有找到优先模型，使用第一个可用的模型
+		if modelPath == "" && len(availableModels) > 0 {
+			modelPath = availableModels[0]
+			fmt.Printf("✅ 使用第一个可用模型: %s\n", modelPath)
 		}
 	}
 
@@ -205,6 +276,14 @@ func (s *WhisperService) realWhisperRecognition(audioPath string, language strin
 
 	// 准备Whisper CLI命令
 	outputBase := strings.TrimSuffix(wavPath, filepath.Ext(wavPath))
+
+	// 输出调试信息
+	fmt.Printf("🎯 开始Whisper识别:\n")
+	fmt.Printf("   模型文件: %s\n", modelPath)
+	fmt.Printf("   音频文件: %s\n", wavPath)
+	fmt.Printf("   识别语言: %s\n", whisperLang)
+	fmt.Printf("   Whisper CLI: %s\n", s.whisperPath)
+
 	cmd := exec.Command(s.whisperPath,
 		"-m", modelPath,
 		"-f", wavPath,
@@ -263,6 +342,24 @@ func (s *WhisperService) realWhisperRecognition(audioPath string, language strin
 	}
 
 	return result, nil
+}
+
+// RecognizeFileWithModel 使用指定模型文件识别音频文件
+func (s *WhisperService) RecognizeFileWithModel(audioPath string, language string, specificModelFile string, progressCallback func(*models.RecognitionProgress)) (*models.RecognitionResult, error) {
+	if specificModelFile != "" {
+		// 临时更新配置使用指定的模型文件
+		originalModelFile := s.config.SpecificModelFile
+		s.config.SpecificModelFile = specificModelFile
+		defer func() {
+			// 恢复原始配置
+			s.config.SpecificModelFile = originalModelFile
+		}()
+
+		fmt.Printf("🎯 使用用户指定的模型文件: %s\n", specificModelFile)
+	}
+
+	// 调用原有的识别方法
+	return s.RecognizeFile(audioPath, language, progressCallback)
 }
 
 // mapLanguageToWhisper 将语言代码映射到Whisper支持的语言代码

@@ -69,24 +69,6 @@
                 </select>
               </div>
               <div class="setting-row">
-                <label for="modelSelect">识别模型:</label>
-                <select
-                  id="modelSelect"
-                  :value="settings.modelType"
-                  @change="updateSetting('modelType', $event.target.value)"
-                  class="select-input"
-                >
-                  <option
-                    v-for="model in availableModels"
-                    :key="model.value"
-                    :value="model.value"
-                    :title="model.description"
-                  >
-                    {{ model.label }} - {{ model.description }}
-                  </option>
-                </select>
-              </div>
-              <div class="setting-row">
                 <label>
                   <input
                     type="checkbox"
@@ -253,31 +235,6 @@
                       >
                         {{ modelLoading ? '选择中...' : '浏览' }}
                       </button>
-                    </div>
-                  </div>
-
-                  <!-- 具体模型文件选择 -->
-                  <div class="setting-row">
-                    <label for="specificModelFile">指定模型文件:</label>
-                    <div class="input-group">
-                      <input
-                        type="text"
-                        id="specificModelFile"
-                        :value="settings.specificModelFile"
-                        @input="updateSetting('specificModelFile', $event.target.value)"
-                        class="text-input"
-                        placeholder="留空则使用默认模型 (ggml-base.bin)"
-                      >
-                      <button
-                        @click="browseModelFile"
-                        class="btn btn-small btn-secondary"
-                        :disabled="modelLoading"
-                      >
-                        {{ modelLoading ? '选择中...' : '选择文件' }}
-                      </button>
-                    </div>
-                    <div class="setting-description">
-                      可选择具体的 Whisper 模型文件 (.bin)，支持各种大小和量化版本
                     </div>
                   </div>
 
@@ -561,51 +518,6 @@ const checkCurrentModelPath = async () => {
   }
 }
 
-// 选择具体模型文件
-const browseModelFile = async () => {
-  try {
-    modelLoading.value = true
-    console.log('🗂️ 开始选择模型文件...')
-
-    // 动态导入 useWails 以避免循环依赖
-    const { useWails } = await import('../composables/useWails')
-    const { selectModelFile } = useWails()
-
-    // 选择模型文件
-    const selectionResult = await selectModelFile()
-    if (selectionResult?.success) {
-      const selectedFile = selectionResult.filePath
-      const fileName = selectionResult.fileName
-      const modelPath = selectionResult.modelPath
-
-      // 更新设置中的具体模型文件路径和模型目录
-      updateSetting('specificModelFile', selectedFile)
-      updateSetting('modelPath', modelPath)
-
-      // 立即保存设置以确保持久化
-      try {
-        await saveSettings()
-        console.log('✅ 模型文件路径已保存到配置文件')
-
-        toastStore.showSuccess(
-          '模型文件选择成功',
-          `已选择模型: ${fileName} (${selectionResult.fileSizeStr})`
-        )
-
-        // 重新检查模型信息
-        await checkCurrentModelPath()
-      } catch (saveError) {
-        console.warn('保存模型文件路径失败:', saveError)
-        toastStore.showWarning('部分保存成功', '模型文件已选择，但配置文件保存失败')
-      }
-    }
-  } catch (error) {
-    console.error('选择模型文件失败:', error)
-    toastStore.showError('浏览失败', error.message)
-  } finally {
-    modelLoading.value = false
-  }
-}
 
 // 打开模型文档
 const openModelDocs = () => {

@@ -4,6 +4,7 @@ export namespace main {
 	    filePath: string;
 	    language: string;
 	    options: Record<string, any>;
+	    specificModelFile?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new RecognitionRequest(source);
@@ -14,6 +15,7 @@ export namespace main {
 	        this.filePath = source["filePath"];
 	        this.language = source["language"];
 	        this.options = source["options"];
+	        this.specificModelFile = source["specificModelFile"];
 	    }
 	}
 	export class RecognitionResponse {

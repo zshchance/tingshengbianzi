@@ -88,9 +88,10 @@ func loadDefaultConfig() *models.RecognitionConfig {
 
 // RecognitionRequest 识别请求
 type RecognitionRequest struct {
-	FilePath string                 `json:"filePath"`
-	Language string                 `json:"language"`
-	Options  map[string]interface{} `json:"options"`
+	FilePath          string                 `json:"filePath"`
+	Language          string                 `json:"language"`
+	Options           map[string]interface{} `json:"options"`
+	SpecificModelFile string                 `json:"specificModelFile,omitempty"` // 用户指定的具体模型文件
 }
 
 // RecognitionResponse 识别响应
@@ -191,13 +192,29 @@ func (a *App) performRecognition(request RecognitionRequest, language string) {
 	})
 
 	// 执行识别
-	result, err := a.recognitionService.RecognizeFile(
-		request.FilePath,
-		language,
-		func(progress *models.RecognitionProgress) {
-			a.sendProgressEvent("recognition_progress", progress)
-		},
-	)
+	var result *models.RecognitionResult
+	var err error
+
+	if request.SpecificModelFile != "" {
+		// 使用用户指定的模型文件
+		result, err = a.recognitionService.RecognizeFileWithModel(
+			request.FilePath,
+			language,
+			request.SpecificModelFile,
+			func(progress *models.RecognitionProgress) {
+				a.sendProgressEvent("recognition_progress", progress)
+			},
+		)
+	} else {
+		// 使用默认识别方法
+		result, err = a.recognitionService.RecognizeFile(
+			request.FilePath,
+			language,
+			func(progress *models.RecognitionProgress) {
+				a.sendProgressEvent("recognition_progress", progress)
+			},
+		)
+	}
 
 	if err != nil {
 		a.sendProgressEvent("recognition_error", models.NewRecognitionError(models.ErrorCodeRecognitionFailed, "语音识别失败", err.Error()))
