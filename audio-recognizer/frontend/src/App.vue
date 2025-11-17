@@ -112,6 +112,7 @@ import { useWails } from './composables/useWails'
 import { useSettings } from './composables/useSettings'
 import { generateFineGrainedTimestampedText } from './utils/timeFormatter'
 import { generateFineGrainedTimestampedText as generateEnhancedTimestamps, optimizeSpeedAnalysis } from './utils/fineGrainedTimestamps'
+import { generateAIOptimizationPrompt, preprocessText, generateTextQualityReport } from './utils/aiOptimizer'
 import { EventsOn } from '../wailsjs/runtime/runtime.js'
 import ToastContainer from './components/ToastContainer.vue'
 import ProgressBar from './components/ProgressBar.vue'
@@ -909,6 +910,44 @@ const setupGlobalWailsEvents = () => {
         })
       } else {
         console.warn('⚠️ 没有segments数据，无法生成细颗粒度时间戳')
+      }
+
+      // 生成AI优化结果（基于细颗粒度时间戳文本）
+      if (response.result.timestampedText) {
+        console.log('🤖 开始生成AI优化结果')
+
+        try {
+          // 预处理文本
+          const preprocessedText = preprocessText(response.result.timestampedText)
+          console.log('🧹 文本预处理完成')
+
+          // 生成AI优化提示词
+          const aiPrompt = generateAIOptimizationPrompt(preprocessedText, {
+            includeBasicOptimization: true,
+            includeMarkerProcessing: true,
+            includeContentOptimization: true,
+            preserveTimestamps: true,
+            customRequirements: '请特别注意保持时间戳的完整性，这是字幕制作的关键信息。'
+          })
+          console.log('💡 AI优化提示词生成完成，长度:', aiPrompt.length)
+
+          // 生成文本质量报告
+          const qualityReport = generateTextQualityReport(preprocessedText)
+          console.log('📊 文本质量报告:', qualityReport)
+
+          // 将AI优化提示词存储到结果中（用户可以复制使用）
+          response.result.aiOptimizationPrompt = aiPrompt
+          response.result.preprocessedText = preprocessedText
+          response.result.qualityReport = qualityReport
+
+          console.log('✅ AI优化相关数据生成完成')
+        } catch (error) {
+          console.error('❌ AI优化处理失败:', error)
+          response.result.aiOptimizationPrompt = 'AI优化提示词生成失败: ' + error.message
+        }
+      } else {
+        console.warn('⚠️ 没有细颗粒度时间戳文本，无法生成AI优化结果')
+        response.result.aiOptimizationPrompt = '请先生成细颗粒度时间戳，然后才能进行AI优化。'
       }
 
       recognitionResult.value = response.result

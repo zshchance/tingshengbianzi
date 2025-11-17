@@ -17,7 +17,8 @@ export function timeStringToSeconds(timeString) {
 
     // 处理ISO时间格式 "1970-01-01T08:00:00+08:00"
     if (typeof timeString === 'string' && timeString.includes('T')) {
-      // 特殊处理：如果是1970-01-01格式，提取时间部分作为当天的秒数
+      // 特殊处理：如果是1970-01-01格式，这是语音识别的相对时间戳
+      // 需要减去8小时（28800秒）来得到从00:00开始的时间
       if (timeString.includes('1970-01-01')) {
         // 提取时间部分 "08:00:00"
         const timeMatch = timeString.match(/T(\d{2}):(\d{2}):(\d{2})/)
@@ -25,7 +26,10 @@ export function timeStringToSeconds(timeString) {
           const hours = parseInt(timeMatch[1], 10)
           const minutes = parseInt(timeMatch[2], 10)
           const seconds = parseInt(timeMatch[3], 10)
-          return hours * 3600 + minutes * 60 + seconds
+          const totalSeconds = hours * 3600 + minutes * 60 + seconds
+          // 语音识别时间戳应该是相对时间，从00:00开始计算
+          // 所以减去8小时（28800秒）来得到正确的相对时间
+          return Math.max(0, totalSeconds - 28800)
         }
       }
 
