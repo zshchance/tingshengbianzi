@@ -65,9 +65,9 @@
             <button @click="resetApplication" class="btn btn-secondary btn-large">
               🔄 重置
             </button>
-            <!-- 调试按钮 -->
-            <button @click="debugStates" class="btn btn-small btn-info" title="调试状态">
-              🔍 调试
+            <!-- 日志下载按钮 -->
+            <button @click="downloadLogs" class="btn btn-small btn-info" title="下载识别日志">
+              📄 下载日志
             </button>
           </div>
         </section>
@@ -113,6 +113,7 @@ import { useSettings } from './composables/useSettings'
 import { generateFineGrainedTimestampedText } from './utils/timeFormatter'
 import { generateFineGrainedTimestampedText as generateEnhancedTimestamps, optimizeSpeedAnalysis } from './utils/fineGrainedTimestamps'
 import { generateAIOptimizationPrompt, preprocessText, generateTextQualityReport } from './utils/aiOptimizer'
+import RecognitionLogger from './utils/recognitionLogger'
 import { EventsOn } from '../wailsjs/runtime/runtime.js'
 import ToastContainer from './components/ToastContainer.vue'
 import ProgressBar from './components/ProgressBar.vue'
@@ -152,18 +153,6 @@ watch(() => audioFile.fileInfo.value, (newVal) => {
   }))
 }, { immediate: true })
 
-// 调试：验证 audioFile 对象
-console.log('🔧 audioFile 对象:', audioFile)
-
-// 添加一个计算属性来双重检查
-const hasFileDebug = computed(() => {
-  const result = hasFile
-  console.log('🔍 App组件 computed hasFile:', {
-    result,
-    timestamp: new Date().toISOString()
-  })
-  return result
-})
 const {
   startRecognition: wailsStartRecognition,
   stopRecognition: wailsStopRecognition,
@@ -353,6 +342,10 @@ const startRecognition = async () => {
 
     // 调用Wails API开始识别（全局事件监听器已设置，会自动处理进度更新）
     console.log('🎯 调用wailsStartRecognition，请求:', recognitionRequest)
+
+    // 记录识别开始日志
+    await RecognitionLogger.logRecognitionStart(recognitionRequest)
+
     console.log('🎯 开始调用Wails API...')
     try {
       const result = await wailsStartRecognition(recognitionRequest)
@@ -393,20 +386,20 @@ const stopRecognition = async () => {
   }
 }
 
-// 调试状态
-const debugStates = () => {
-  console.log('🔍 调试状态:', {
-    hasFile,
-    hasFileDebug,
-    currentFile: currentFile.value,
-    fileInfo: audioFile.fileInfo.value,
-    isProcessing: isProcessing.value,
-    buttonEnabled: !(!hasFileDebug || isProcessing.value),
-    hasFileType: typeof hasFile,
-    hasFileDebugType: typeof hasFileDebug,
-    hasFileEqualsDebug: hasFile === hasFileDebug,
-    timestamp: new Date().toISOString()
-  })
+// 下载日志
+const downloadLogs = () => {
+  try {
+    // 显示可用日志文件
+    RecognitionLogger.listAvailableLogs()
+
+    // 自动下载今日日志
+    RecognitionLogger.downloadTodayLog()
+
+    toastStore.showSuccess('日志下载', '日志文件已开始下载')
+  } catch (error) {
+    console.error('下载日志失败:', error)
+    toastStore.showError('下载失败', error.message)
+  }
 }
 
 // 添加浏览器拖拽支持（作为Wails原生拖拽的补充）
@@ -861,11 +854,45 @@ const setupGlobalWailsEvents = () => {
   })
 
   // 识别完成事件
-  EventsOn('recognition_complete', (response) => {
+  EventsOn('recognition_complete', async (response) => {
     console.log('🎯 全局完成事件:', response)
     isProcessing.value = false
 
+    // 记录完整的Whisper原始响应数据
+    const completeWhisperResponse = {
+      success: response.success,
+      error: response.error,
+      result: response.result ? {
+        text: response.result.text,
+        textLength: response.result.text ? response.result.text.length : 0,
+        segments: response.result.segments,
+        segmentCount: response.result.segments ? response.result.segments.length : 0,
+        words: response.result.words,
+        wordCount: response.result.words ? response.result.words.length : 0,
+        duration: response.result.duration,
+        language: response.result.language,
+        // 记录所有可能的Whisper返回字段
+        info: response.result.info,
+        model: response.result.model,
+        timestampedText: response.result.timestampedText,
+        timestampedTextLength: response.result.timestampedText ? response.result.timestampedText.length : 0
+      } : null,
+      processingTime: response.processingTime,
+      timestamp: new Date().toISOString()
+    }
+
+    // 记录完整的Whisper响应到日志
+    await RecognitionLogger.logToFile('whisper', 'complete_response', completeWhisperResponse)
+
+    // 记录原始识别响应（保持兼容性）
+    await RecognitionLogger.logRawRecognitionResponse(response)
+
     if (response.success && response.result) {
+      // 记录详细的segments信息
+      if (response.result.segments) {
+        await RecognitionLogger.logDetailedSegments(response.result.segments)
+      }
+
       // 修复：从segments生成text字段
       if (!response.result.text && response.result.segments && response.result.segments.length > 0) {
         response.result.text = response.result.segments
@@ -908,6 +935,21 @@ const setupGlobalWailsEvents = () => {
           hasTimestampedText: !!response.result.timestampedText,
           preview: response.result.timestampedText?.substring(0, 100) || '无内容'
         })
+
+        // 记录细颗粒度处理过程
+        await RecognitionLogger.logFineGrainedProcessing(
+          response.result.segments,
+          {
+            minSegmentLength: 6,
+            maxSegmentLength: 15,
+            averageSpeed: optimizeSpeedAnalysis(
+              response.result.segments.map(s => s.text).join(' '),
+              totalDuration,
+              language
+            )
+          },
+          response.result.timestampedText
+        )
       } else {
         console.warn('⚠️ 没有segments数据，无法生成细颗粒度时间戳')
       }
@@ -930,6 +972,15 @@ const setupGlobalWailsEvents = () => {
             customRequirements: '请特别注意保持时间戳的完整性，这是字幕制作的关键信息。'
           })
           console.log('💡 AI优化提示词生成完成，长度:', aiPrompt.length)
+
+          // 记录AI优化过程
+          await RecognitionLogger.logAIOptimization(response.result.timestampedText, aiPrompt, {
+            includeBasicOptimization: true,
+            includeMarkerProcessing: true,
+            includeContentOptimization: true,
+            preserveTimestamps: true,
+            customRequirements: '请特别注意保持时间戳的完整性，这是字幕制作的关键信息。'
+          })
 
           // 生成文本质量报告
           const qualityReport = generateTextQualityReport(preprocessedText)
@@ -955,6 +1006,9 @@ const setupGlobalWailsEvents = () => {
       progressData.progress = 100
       progressData.status = '识别完成！'
       toastStore.showSuccess('识别完成', '音频识别已成功完成')
+
+      // 记录识别完成日志
+      await RecognitionLogger.logRecognitionComplete(response.result)
 
       // 2秒后隐藏进度条
       setTimeout(() => {

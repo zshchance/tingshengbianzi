@@ -132,6 +132,7 @@ import {
   highlightTimestamps,
   timeStringToSeconds
 } from '../utils/timeFormatter'
+import RecognitionLogger from '../utils/recognitionLogger'
 
 const props = defineProps({
   visible: {
@@ -570,6 +571,45 @@ defineExpose({
     aiOptimizedContent.value = content
   }
 })
+
+// 监控字幕生成并记录日志
+watch(
+  [() => props.recognitionResult?.segments, () => subtitleFormat.value, () => showTimestamps.value, () => activeTab.value],
+  async ([segments, format, showTs, activeTab]) => {
+    if (segments && segments.length > 0 && activeTab === 'subtitle') {
+      // 生成字幕内容用于日志记录
+      const validSegments = segments.filter(segment => segment.text && segment.text.trim())
+      if (validSegments.length > 0) {
+        const copyLines = validSegments.map((segment, index) => {
+          const segmentText = segment.text.trim()
+          const srtIndex = index + 1
+
+          if (showTs) {
+            if (format === 'srt') {
+              return `${srtIndex}\n${formatSRTTime(segment.start)} --> ${formatSRTTime(segment.end)}\n${segmentText}`
+            } else if (format === 'vtt') {
+              return `${formatWebVTTTime(segment.start)} --> ${formatWebVTTTime(segment.end)}\n${segmentText}`
+            } else {
+              return `${srtIndex} ${formatTimestamp(segment.start).replace(/[\[\]]/g, '')} ${segmentText}`
+            }
+          } else {
+            return `${srtIndex} ${segmentText}`
+          }
+        })
+
+        const subtitleContent = copyLines.join('\n\n')
+
+        // 记录字幕生成日志
+        await RecognitionLogger.logSubtitleGeneration(
+          validSegments,
+          format,
+          subtitleContent
+        )
+      }
+    }
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>

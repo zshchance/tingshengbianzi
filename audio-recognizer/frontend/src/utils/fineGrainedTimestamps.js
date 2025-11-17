@@ -282,6 +282,30 @@ export function generateFineGrainedTimestampedText(segments, options = {}) {
     return ''
   }
 
+  // 记录详细的Whisper原始数据用于日志分析
+  const whisperRawData = {
+    segmentCount: segments.length,
+    segments: segments.map((segment, index) => ({
+      index,
+      text: segment.text,
+      start: segment.start,
+      end: segment.end,
+      confidence: segment.confidence,
+      words: segment.words,
+      no_speech_prob: segment.no_speech_prob,
+      temperature: segment.temperature,
+      avg_logprob: segment.avg_logprob,
+      compression_ratio: segment.compression_ratio,
+      hasWordTimestamps: !!(segment.words && segment.words.length > 0)
+    })),
+    processingOptions: options
+  }
+
+  // 记录Whisper原始数据到日志
+  if (window.RecognitionLogger) {
+    window.RecognitionLogger.logToFile('whisper', 'raw_segments_data', whisperRawData)
+  }
+
   const textLines = []
   console.log('📝 开始处理segments数量:', segments.length)
 
