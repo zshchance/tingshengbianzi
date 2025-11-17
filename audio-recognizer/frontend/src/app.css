@@ -1,54 +1,324 @@
-#logo {
-    display: block;
-    width: 50%;
-    height: 50%;
-    margin: auto;
-    padding: 10% 0 0;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-size: 100% 100%;
-    background-origin: content-box;
-}
+/* 应用特定的样式补充 */
 
-.result {
+/* 加载动画 */
+.loading-spinner {
+    display: inline-block;
+    width: 20px;
     height: 20px;
-    line-height: 20px;
-    margin: 1.5rem auto;
+    border: 3px solid rgba(255,255,255,.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: spin 1s ease-in-out infinite;
 }
 
-.input-box .btn {
-    width: 60px;
-    height: 30px;
-    line-height: 30px;
-    border-radius: 3px;
-    border: none;
-    margin: 0 0 0 20px;
-    padding: 0 8px;
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* 文件拖拽增强效果 */
+.file-drop-zone {
+    transition: all 0.3s ease;
+    border: 2px dashed var(--border);
+}
+
+.file-drop-zone.drag-over {
+    background-color: var(--primary-light);
+    border-color: var(--primary-color);
+    transform: scale(1.02);
+}
+
+/* 进度条动画 */
+.progress-fill {
+    background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+    background-size: 200% 100%;
+    animation: progress-shine 2s linear infinite;
+}
+
+@keyframes progress-shine {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* 按钮悬停效果增强 */
+.btn {
+    position: relative;
+    overflow: hidden;
+}
+
+.btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.5);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+}
+
+.btn:active::before {
+    width: 300px;
+    height: 300px;
+}
+
+/* 标签页切换动画 */
+.tab-btn {
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.tab-btn::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 0;
+    height: 2px;
+    background-color: var(--primary-color);
+    transform: translateX(-50%);
+    transition: width 0.3s ease;
+}
+
+.tab-btn.active::after {
+    width: 100%;
+}
+
+/* 模态框背景动画 */
+.modal-overlay {
+    animation: fadeIn 0.3s ease;
+}
+
+.modal {
+    animation: slideUp 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(30px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* 设置面板分组样式 */
+.setting-group {
+    padding: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+    border: 1px solid var(--border);
+    border-radius: var(--border-radius-md);
+    background-color: var(--background);
+}
+
+.setting-group h4 {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+}
+
+/* 开关组件样式 */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 48px;
+    height: 24px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
     cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 34px;
 }
 
-.input-box .btn:hover {
-    background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%);
-    color: #333333;
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
 }
 
-.input-box .input {
-    border: none;
-    border-radius: 3px;
-    outline: none;
-    height: 30px;
-    line-height: 30px;
-    padding: 0 10px;
-    background-color: rgba(240, 240, 240, 1);
-    -webkit-font-smoothing: antialiased;
+input:checked + .slider {
+    background-color: var(--primary-color);
 }
 
-.input-box .input:hover {
-    border: none;
-    background-color: rgba(255, 255, 255, 1);
+input:checked + .slider:before {
+    transform: translateX(24px);
 }
 
-.input-box .input:focus {
-    border: none;
-    background-color: rgba(255, 255, 255, 1);
+/* 状态指示器 */
+.status-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: var(--spacing-sm);
+}
+
+.status-indicator.online {
+    background-color: var(--success-color);
+    box-shadow: 0 0 0 2px rgba(92, 184, 92, 0.2);
+}
+
+.status-indicator.offline {
+    background-color: var(--text-secondary);
+}
+
+.status-indicator.error {
+    background-color: var(--error-color);
+    box-shadow: 0 0 0 2px rgba(217, 83, 79, 0.2);
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+    .file-drop-zone {
+        padding: var(--spacing-lg);
+    }
+
+    .control-buttons {
+        flex-direction: column;
+        gap: var(--spacing-md);
+    }
+
+    .btn-large {
+        width: 100%;
+    }
+}
+
+/* 深色主题支持 */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --background: #1a1a1a;
+        --surface: #2d2d2d;
+        --border: #404040;
+        --text-primary: #ffffff;
+        --text-secondary: #b0b0b0;
+    }
+}
+
+/* 高对比度支持 */
+@media (prefers-contrast: high) {
+    :root {
+        --border: #000000;
+        --text-primary: #000000;
+        --background: #ffffff;
+    }
+}
+
+/* 减少动画偏好支持 */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* 焦点可见性增强 */
+.btn:focus,
+.text-input:focus,
+.select-input:focus,
+.tab-btn:focus {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
+/* 打印样式 */
+@media print {
+    .app-header,
+    .app-footer,
+    .control-section,
+    .progress-section,
+    .modal-overlay {
+        display: none !important;
+    }
+
+    .result-display {
+        border: 1px solid #000 !important;
+        background: #fff !important;
+    }
+}
+
+/* 滚动条样式 */
+.result-display::-webkit-scrollbar {
+    width: 8px;
+}
+
+.result-display::-webkit-scrollbar-track {
+    background: var(--surface);
+    border-radius: 4px;
+}
+
+.result-display::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+}
+
+.result-display::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+}
+
+/* 工具提示样式 */
+.tooltip {
+    position: relative;
+    cursor: help;
+}
+
+.tooltip::before {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--text-primary);
+    color: var(--background);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--border-radius-sm);
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+    z-index: 1000;
+}
+
+.tooltip:hover::before {
+    opacity: 1;
+}
+
+/* 加载骨架屏 */
+.skeleton {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
 }
