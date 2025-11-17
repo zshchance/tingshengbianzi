@@ -309,6 +309,35 @@ export function useWails() {
   }
 
   /**
+   * 选择模型文件
+   */
+  const selectModelFile = async () => {
+    try {
+      isLoading.value = true
+      toastStore.showInfo('选择模型文件', '正在打开文件选择对话框...')
+
+      const result = await App.SelectModelFile()
+      console.log('📁 Wails模型文件选择结果:', result)
+
+      if (result && result.success) {
+        toastStore.showSuccess('文件选择成功', `已选择模型文件: ${result.fileName}`)
+        return result
+      } else {
+        console.error('📁 模型文件选择返回值异常:', result)
+        const errorMsg = result?.error || '模型文件选择失败'
+        throw new Error(errorMsg)
+      }
+
+    } catch (error) {
+      console.error('模型文件选择失败:', error)
+      toastStore.showError('文件选择失败', error.message)
+      throw error
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  /**
    * 导出识别结果
    */
   const exportResult = async (result, format, outputPath) => {
@@ -372,6 +401,7 @@ export function useWails() {
     // 方法
     selectAudioFile,
     selectModelDirectory,
+    selectModelFile,
     getModelInfo,
     startRecognition,
     stopRecognition,

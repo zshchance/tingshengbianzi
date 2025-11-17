@@ -30,6 +30,10 @@ export function SelectModelDirectory() {
   return window['go']['main']['App']['SelectModelDirectory']();
 }
 
+export function SelectModelFile() {
+  return window['go']['main']['App']['SelectModelFile']();
+}
+
 export function StartRecognition(arg1) {
   return window['go']['main']['App']['StartRecognition'](arg1);
 }

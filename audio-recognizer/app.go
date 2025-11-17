@@ -376,6 +376,106 @@ func (a *App) SelectModelDirectory() map[string]interface{} {
 	}
 }
 
+// SelectModelFile 选择模型文件
+func (a *App) SelectModelFile() map[string]interface{} {
+	dialogOptions := runtime.OpenDialogOptions{
+		Title:            "选择Whisper模型文件",
+		DefaultDirectory: "",
+		DefaultFilename:  "",
+		Filters: []runtime.FileFilter{
+			{
+				DisplayName: "Whisper模型文件",
+				Pattern:     "*.bin",
+			},
+		},
+	}
+
+	selectedFile, err := runtime.OpenFileDialog(a.ctx, dialogOptions)
+	if err != nil {
+		return map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("文件选择失败: %v", err),
+		}
+	}
+
+	if selectedFile == "" {
+		return map[string]interface{}{
+			"success": false,
+			"error":   "未选择文件",
+		}
+	}
+
+	// 检查文件是否存在
+	fileInfo, err := os.Stat(selectedFile)
+	if err != nil {
+		return map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("无法访问文件: %v", err),
+		}
+	}
+
+	if fileInfo.IsDir() {
+		return map[string]interface{}{
+			"success": false,
+			"error":   "选择的路径是文件夹，请选择模型文件",
+		}
+	}
+
+	// 验证是否为有效的Whisper模型文件
+	fileName := filepath.Base(selectedFile)
+	if !a.isValidWhisperModel(fileName) {
+		return map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("文件 '%s' 不是有效的Whisper模型文件", fileName),
+		}
+	}
+
+	// 获取文件目录
+	modelDir := filepath.Dir(selectedFile)
+
+	return map[string]interface{}{
+		"success":    true,
+		"filePath":   selectedFile,
+		"fileName":   fileName,
+		"modelPath":  modelDir,
+		"fileSize":   fileInfo.Size(),
+		"fileSizeStr": a.formatFileSize(fileInfo.Size()),
+	}
+}
+
+// isValidWhisperModel 验证是否为有效的Whisper模型文件
+func (a *App) isValidWhisperModel(fileName string) bool {
+	validModels := []string{
+		"ggml-tiny.bin",
+		"ggml-base.bin",
+		"ggml-small.bin",
+		"ggml-medium.bin",
+		"ggml-large.bin",
+		"ggml-large-v1.bin",
+		"ggml-large-v2.bin",
+		"ggml-large-v3.bin",
+		// 量化模型
+		"ggml-tiny.q5_1.bin",
+		"ggml-base.q5_1.bin",
+		"ggml-small.q5_1.bin",
+		"ggml-medium.q5_1.bin",
+		"ggml-large.q5_1.bin",
+		"ggml-tiny.en.bin",
+		"ggml-base.en.bin",
+		"ggml-small.en.bin",
+		"ggml-medium.en.bin",
+		"ggml-large.en.bin",
+	}
+
+	for _, validModel := range validModels {
+		if fileName == validModel {
+			return true
+		}
+	}
+
+	return false
+}
+
 // scanModelFiles 扫描模型文件夹
 func (a *App) scanModelFiles(directory string) []map[string]interface{} {
 	var models []map[string]interface{}

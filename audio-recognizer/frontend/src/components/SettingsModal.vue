@@ -256,6 +256,31 @@
                     </div>
                   </div>
 
+                  <!-- 具体模型文件选择 -->
+                  <div class="setting-row">
+                    <label for="specificModelFile">指定模型文件:</label>
+                    <div class="input-group">
+                      <input
+                        type="text"
+                        id="specificModelFile"
+                        :value="settings.specificModelFile"
+                        @input="updateSetting('specificModelFile', $event.target.value)"
+                        class="text-input"
+                        placeholder="留空则使用默认模型 (ggml-base.bin)"
+                      >
+                      <button
+                        @click="browseModelFile"
+                        class="btn btn-small btn-secondary"
+                        :disabled="modelLoading"
+                      >
+                        {{ modelLoading ? '选择中...' : '选择文件' }}
+                      </button>
+                    </div>
+                    <div class="setting-description">
+                      可选择具体的 Whisper 模型文件 (.bin)，支持各种大小和量化版本
+                    </div>
+                  </div>
+
                   <!-- 模型信息显示 -->
                   <div v-if="modelInfo" class="model-info">
                     <div class="setting-row">
@@ -278,18 +303,28 @@
                     <!-- 模型列表 -->
                     <div v-if="modelInfo.models && modelInfo.models.length > 0" class="model-list">
                       <div class="setting-row">
-                        <label>可用模型:</label>
+                        <label>可用模型 (点击选择):</label>
                       </div>
                       <div
                         v-for="model in modelInfo.models"
                         :key="model.name"
                         class="model-item"
+                        :class="{ 'model-selected': isModelSelected(model) }"
+                        @click="selectModel(model)"
                       >
-                        <div class="model-name">{{ model.name }}</div>
-                        <div class="model-details">
-                          <span class="model-type">{{ model.type }}</span>
-                          <span class="model-size">{{ model.sizeStr }}</span>
+                        <div class="model-content">
+                          <div class="model-name">
+                            {{ model.name }}
+                            <span v-if="isModelSelected(model)" class="selected-indicator">✓</span>
+                          </div>
+                          <div class="model-details">
+                            <span class="model-type">{{ model.type }}</span>
+                            <span class="model-size">{{ model.sizeStr }}</span>
+                          </div>
                         </div>
+                      </div>
+                      <div class="model-selection-info">
+                        当前选择: {{ getCurrentSelectedModel() || '未选择，将使用默认模型' }}
                       </div>
                     </div>
 
@@ -526,6 +561,52 @@ const checkCurrentModelPath = async () => {
   }
 }
 
+// 选择具体模型文件
+const browseModelFile = async () => {
+  try {
+    modelLoading.value = true
+    console.log('🗂️ 开始选择模型文件...')
+
+    // 动态导入 useWails 以避免循环依赖
+    const { useWails } = await import('../composables/useWails')
+    const { selectModelFile } = useWails()
+
+    // 选择模型文件
+    const selectionResult = await selectModelFile()
+    if (selectionResult?.success) {
+      const selectedFile = selectionResult.filePath
+      const fileName = selectionResult.fileName
+      const modelPath = selectionResult.modelPath
+
+      // 更新设置中的具体模型文件路径和模型目录
+      updateSetting('specificModelFile', selectedFile)
+      updateSetting('modelPath', modelPath)
+
+      // 立即保存设置以确保持久化
+      try {
+        await saveSettings()
+        console.log('✅ 模型文件路径已保存到配置文件')
+
+        toastStore.showSuccess(
+          '模型文件选择成功',
+          `已选择模型: ${fileName} (${selectionResult.fileSizeStr})`
+        )
+
+        // 重新检查模型信息
+        await checkCurrentModelPath()
+      } catch (saveError) {
+        console.warn('保存模型文件路径失败:', saveError)
+        toastStore.showWarning('部分保存成功', '模型文件已选择，但配置文件保存失败')
+      }
+    }
+  } catch (error) {
+    console.error('选择模型文件失败:', error)
+    toastStore.showError('浏览失败', error.message)
+  } finally {
+    modelLoading.value = false
+  }
+}
+
 // 打开模型文档
 const openModelDocs = () => {
   // 在实际应用中，这里可以打开一个本地文档文件或者网页
@@ -540,6 +621,47 @@ onMounted(async () => {
     await checkCurrentModelPath()
   }
 })
+
+// 模型选择相关方法
+const isModelSelected = (model) => {
+  if (!settings.specificModelFile) return false
+  const selectedFileName = settings.specificModelFile.split('/').pop().split('\\').pop()
+  return selectedFileName === model.name
+}
+
+const getCurrentSelectedModel = () => {
+  if (!settings.specificModelFile) return null
+  return settings.specificModelFile.split('/').pop().split('\\').pop()
+}
+
+const selectModel = async (model) => {
+  try {
+    console.log('🎯 选择模型:', model.name)
+
+    // 构建完整的模型文件路径
+    const modelFilePath = settings.modelPath + (settings.modelPath.endsWith('/') || settings.modelPath.endsWith('\\') ? '' : '/') + model.name
+
+    // 更新设置中的具体模型文件
+    updateSetting('specificModelFile', modelFilePath)
+
+    // 立即保存设置
+    try {
+      await saveSettings()
+      console.log('✅ 模型选择已保存:', model.name)
+
+      toastStore.showSuccess(
+        '模型选择成功',
+        `已选择模型: ${model.name} (${model.sizeStr})`
+      )
+    } catch (saveError) {
+      console.warn('保存模型选择失败:', saveError)
+      toastStore.showWarning('选择成功', '模型已选择，但配置保存失败')
+    }
+  } catch (error) {
+    console.error('选择模型失败:', error)
+    toastStore.showError('选择失败', error.message)
+  }
+}
 
 // 监听设置模态框的显示状态
 watch(() => props.visible, async (newVisible) => {
@@ -874,6 +996,60 @@ watch(() => settings.modelPath, async (newPath) => {
   background: var(--card-bg, #ffffff);
   border-radius: 6px;
   border: 1px solid var(--border-color, #e5e7eb);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.model-item:hover {
+  background: var(--bg-secondary, #f9fafb);
+  border-color: var(--primary-color, #3b82f6);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.model-item.model-selected {
+  background: var(--primary-bg, #dbeafe);
+  border-color: var(--primary-color, #3b82f6);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.model-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.model-name {
+  font-weight: 500;
+  color: var(--text-primary, #1f2937);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.selected-indicator {
+  color: var(--primary-color, #3b82f6);
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.model-selection-info {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary, #f3f4f6);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-secondary, #6b7280);
+  border-left: 3px solid var(--primary-color, #3b82f6);
+}
+
+.setting-description {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-secondary, #6b7280);
+  line-height: 1.4;
 }
 
 .model-name {

@@ -16,6 +16,8 @@ export function SelectAudioFile():Promise<Record<string, any>>;
 
 export function SelectModelDirectory():Promise<Record<string, any>>;
 
+export function SelectModelFile():Promise<Record<string, any>>;
+
 export function StartRecognition(arg1:main.RecognitionRequest):Promise<main.RecognitionResponse>;
 
 export function StopRecognition():Promise<main.RecognitionResponse>;

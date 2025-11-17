@@ -33,6 +33,7 @@ export function useSettings() {
     // 模型设置
     modelPath: './models',
     customModelPath: '',
+    specificModelFile: '', // 具体的模型文件路径
 
     // 高级设置
     maxRecordingDuration: 3600, // 秒
@@ -203,7 +204,7 @@ export function useSettings() {
   // 自动保存重要设置
   watch(settings, (newSettings, oldSettings) => {
     // 只在重要设置改变时自动保存
-    const importantKeys = ['modelPath', 'recognitionLanguage', 'enableWordTimestamp', 'confidenceThreshold']
+    const importantKeys = ['modelPath', 'specificModelFile', 'recognitionLanguage', 'enableWordTimestamp', 'confidenceThreshold']
     const hasImportantChange = importantKeys.some(key => newSettings[key] !== oldSettings[key])
 
     if (hasImportantChange) {
