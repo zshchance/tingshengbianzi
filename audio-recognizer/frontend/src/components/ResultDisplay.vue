@@ -85,33 +85,8 @@
 
         <!-- 字幕模式 -->
         <div v-else-if="activeTab === 'subtitle'" class="content-display">
-          <div class="subtitle-controls">
-            <button
-              @click="toggleTimestampVisibility"
-              class="btn btn-small btn-secondary"
-            >
-              {{ showTimestamps ? '隐藏' : '显示' }}时间戳
-            </button>
-            <select
-              v-model="subtitleFormat"
-              class="select-input btn-small"
-            >
-              <option value="srt">SRT格式</option>
-              <option value="vtt">WebVTT格式</option>
-              <option value="simple">简单格式</option>
-            </select>
-          </div>
-          <div class="subtitle-content">
-            <div
-              v-for="(segment, index) in subtitleSegments"
-              :key="index"
-              class="subtitle-segment"
-            >
-              <span v-if="showTimestamps" class="subtitle-timestamp">
-                {{ formatTimestamp(segment.start) }}
-              </span>
-              <span class="subtitle-text">{{ segment.text }}</span>
-            </div>
+          <div class="subtitle-content-display">
+            <div class="content-text" v-html="formattedSubtitleContent"></div>
           </div>
         </div>
       </div>
@@ -163,8 +138,8 @@ const toastStore = useToastStore()
 
 // 状态
 const activeTab = ref('original')
-const showTimestamps = ref(true)
-const subtitleFormat = ref('srt')
+const showTimestamps = ref(true)  // 保留，用于控制时间戳显示
+const subtitleFormat = ref('srt')  // 保留，用于选择字幕格式
 const isOptimizing = ref(false)
 const aiOptimizedContent = ref('')
 
@@ -262,6 +237,47 @@ const aiPrompt = computed(() => {
 ${originalText}`
 })
 
+// 生成格式化的字幕内容
+const formattedSubtitleContent = computed(() => {
+  const segments = props.recognitionResult?.segments || []
+  if (segments.length === 0) return ''
+
+  const validSegments = segments.filter(segment => segment.text && segment.text.trim())
+
+  if (validSegments.length === 0) return ''
+
+  const entries = validSegments.map((segment, index) => {
+    const segmentText = segment.text.trim()
+
+    if (showTimestamps.value) {
+      if (subtitleFormat.value === 'srt') {
+        return `<div class="subtitle-entry">
+          <div class="subtitle-timestamp srt-timestamp">${formatSRTTime(segment.start)} --> ${formatSRTTime(segment.end)}</div>
+          <div class="subtitle-text">${segmentText}</div>
+        </div>`
+      } else if (subtitleFormat.value === 'vtt') {
+        return `<div class="subtitle-entry">
+          <div class="subtitle-timestamp vtt-timestamp">${formatWebVTTTime(segment.start)} --> ${formatWebVTTTime(segment.end)}</div>
+          <div class="subtitle-text">${segmentText}</div>
+        </div>`
+      } else {
+        // 简单格式
+        return `<div class="subtitle-entry">
+          <div class="subtitle-timestamp simple-timestamp">${formatTimestamp(segment.start).replace(/[\[\]]/g, '')}</div>
+          <div class="subtitle-text">${segmentText}</div>
+        </div>`
+      }
+    } else {
+      // 隐藏时间戳，只显示文本
+      return `<div class="subtitle-entry">
+        <div class="subtitle-text">${segmentText}</div>
+      </div>`
+    }
+  })
+
+  return entries.join('')
+})
+
 
 
 const copyToClipboard = async () => {
@@ -273,12 +289,33 @@ const copyToClipboard = async () => {
     } else if (activeTab.value === 'ai') {
       textToCopy = aiOptimizedContent.value
     } else if (activeTab.value === 'subtitle') {
-      textToCopy = subtitleSegments.value.map(segment => {
-        if (showTimestamps.value) {
-          return `${formatTimestamp(segment.start)} ${segment.text}`
-        }
-        return segment.text
-      }).join('\n')
+      // 从格式化字幕内容生成纯文本用于复制
+      const segments = props.recognitionResult?.segments || []
+      const validSegments = segments.filter(segment => segment.text && segment.text.trim())
+
+      if (validSegments.length === 0) {
+        textToCopy = ''
+      } else {
+        const copyLines = validSegments.map((segment) => {
+          const segmentText = segment.text.trim()
+
+          if (showTimestamps.value) {
+            if (subtitleFormat.value === 'srt') {
+              return `${formatSRTTime(segment.start)} --> ${formatSRTTime(segment.end)}\n${segmentText}`
+            } else if (subtitleFormat.value === 'vtt') {
+              return `${formatWebVTTTime(segment.start)} --> ${formatWebVTTTime(segment.end)}\n${segmentText}`
+            } else {
+              // 简单格式
+              return `${formatTimestamp(segment.start).replace(/[\[\]]/g, '')} ${segmentText}`
+            }
+          } else {
+            // 隐藏时间戳，只显示文本
+            return segmentText
+          }
+        })
+
+        textToCopy = copyLines.join('\n\n')
+      }
     }
 
     if (!textToCopy) {
@@ -310,9 +347,44 @@ const exportResult = () => {
     return
   }
 
+  let exportContent = ''
+  let exportFormat = 'txt'
+
+  if (activeTab.value === 'subtitle') {
+    // 生成导出内容，格式与复制功能相同
+    const segments = props.recognitionResult?.segments || []
+    let exportText = ''
+
+    segments.forEach((segment) => {
+      if (segment.text && segment.text.trim()) {
+        const segmentText = segment.text.trim()
+
+        if (showTimestamps.value) {
+          if (subtitleFormat.value === 'srt') {
+            exportText += `${formatSRTTime(segment.start)} --> ${formatSRTTime(segment.end)}\n${segmentText}\n\n`
+          } else if (subtitleFormat.value === 'vtt') {
+            exportText += `${formatWebVTTTime(segment.start)} --> ${formatWebVTTTime(segment.end)}\n${segmentText}\n\n`
+          } else {
+            // 简单格式
+            exportText += `${formatTimestamp(segment.start).replace(/[\[\]]/g, '')} ${segmentText}\n\n`
+          }
+        } else {
+          // 隐藏时间戳，只显示文本
+          exportText += `${segmentText}\n\n`
+        }
+      }
+    })
+
+    exportContent = exportText.trim()
+    exportFormat = subtitleFormat.value
+  } else {
+    exportContent = currentContent.value
+    exportFormat = 'txt'
+  }
+
   emit('export', {
-    format: activeTab.value === 'subtitle' ? subtitleFormat.value : 'txt',
-    content: currentContent.value,
+    format: exportFormat,
+    content: exportContent,
     filename: generateFilename()
   })
 }
@@ -326,9 +398,6 @@ const generateFilename = () => {
   return `audio-recognizer-${suffix}-${dateStr}-${timeStr}`
 }
 
-const toggleTimestampVisibility = () => {
-  showTimestamps.value = !showTimestamps.value
-}
 
 const startAIOptimization = async () => {
   if (!props.recognitionResult?.text) {
@@ -540,38 +609,80 @@ defineExpose({
   }
 }
 
-.subtitle-controls {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
+
+.subtitle-content-display {
+  padding: 20px;
+}
+
+.subtitle-entry {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
   border-bottom: 1px solid var(--border-color, #e5e7eb);
 }
 
-.subtitle-content {
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.subtitle-segment {
-  margin-bottom: 8px;
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
+.subtitle-entry:last-child {
+  margin-bottom: 0;
+  border-bottom: none;
+  padding-bottom: 0;
 }
 
 .subtitle-timestamp {
-  color: var(--text-muted, #6b7280);
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
   font-weight: 500;
-  white-space: nowrap;
-  min-width: 120px;
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.srt-timestamp {
+  background-color: var(--success-bg, #f0fdf4);
+  color: var(--success-text, #166534);
+  border: 1px solid var(--success-border, #bbf7d0);
+}
+
+.vtt-timestamp {
+  background-color: var(--primary-bg, #eff6ff);
+  color: var(--primary-text, #1e40af);
+  border: 1px solid var(--primary-border, #bfdbfe);
+}
+
+.simple-timestamp {
+  background-color: var(--warning-bg, #fffbeb);
+  color: var(--warning-text, #92400e);
+  border: 1px solid var(--warning-border, #fed7aa);
 }
 
 .subtitle-text {
-  flex: 1;
+  line-height: 1.6;
   color: var(--text-primary, #1f2937);
+  font-size: 15px;
+}
+
+/* 深色模式支持 */
+@media (prefers-color-scheme: dark) {
+  .srt-timestamp {
+    background-color: var(--success-bg-dark, #064e3b);
+    color: var(--success-text-dark, #6ee7b7);
+    border: 1px solid var(--success-border-dark, #10b981);
+  }
+
+  .vtt-timestamp {
+    background-color: var(--primary-bg-dark, #1e3a8a);
+    color: var(--primary-text-dark, #60a5fa);
+    border: 1px solid var(--primary-border-dark, #3b82f6);
+  }
+
+  .simple-timestamp {
+    background-color: var(--warning-bg-dark, #451a03);
+    color: var(--warning-text-dark, #fbbf24);
+    border: 1px solid var(--warning-border-dark, #f59e0b);
+  }
+
+  .subtitle-text {
+    color: var(--text-primary-dark, #f3f4f6);
+  }
 }
 
 .result-placeholder {
