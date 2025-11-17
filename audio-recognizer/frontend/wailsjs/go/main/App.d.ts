@@ -10,6 +10,8 @@ export function GetRecognitionStatus():Promise<Record<string, any>>;
 
 export function LoadModel(arg1:string,arg2:string):Promise<main.RecognitionResponse>;
 
+export function SelectAudioFile():Promise<Record<string, any>>;
+
 export function StartRecognition(arg1:main.RecognitionRequest):Promise<main.RecognitionResponse>;
 
 export function StopRecognition():Promise<main.RecognitionResponse>;

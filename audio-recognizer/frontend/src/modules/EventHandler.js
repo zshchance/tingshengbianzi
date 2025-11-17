@@ -3,6 +3,7 @@
  * 负责统一管理所有UI事件和Wails后端事件
  */
 import {EventsOn} from '../../wailsjs/runtime/runtime.js';
+import {SelectAudioFile} from '../../wailsjs/go/main/App.js';
 
 export class EventHandler {
     constructor(audioFileProcessor, recognitionManager, settingsManager, uiController) {
@@ -60,16 +61,10 @@ export class EventHandler {
         // 文件选择按钮
         this.addEventListener('selectFileBtn', 'click', () => {
             console.log('选择文件按钮被点击');
-            const fileInput = document.getElementById('fileInput');
-            if (fileInput) {
-                console.log('找到文件输入元素，触发点击');
-                fileInput.click();
-            } else {
-                console.error('找不到文件输入元素');
-            }
+            this.handleWailsFileSelect();
         });
 
-        // 文件输入变化
+        // 文件输入变化（用于拖拽的文件）
         this.addEventListener('fileInput', 'change', (e) => {
             console.log('文件输入变化事件触发');
             this.handleFileSelect(e);
@@ -208,11 +203,8 @@ export class EventHandler {
             dropZone.addEventListener('click', (e) => {
                 // 检查点击是否来自选择文件按钮，如果不是才触发文件选择
                 if (e.target.id !== 'selectFileBtn' && !e.target.closest('#selectFileBtn')) {
-                    console.log('拖拽区域被点击，触发文件选择');
-                    const fileInput = document.getElementById('fileInput');
-                    if (fileInput) {
-                        fileInput.click();
-                    }
+                    console.log('拖拽区域被点击，触发Wails文件选择');
+                    this.handleWailsFileSelect();
                 } else {
                     console.log('点击的是选择文件按钮，不触发拖拽区域的点击事件');
                 }
@@ -264,7 +256,70 @@ export class EventHandler {
     }
 
     /**
-     * 处理文件选择
+     * 处理Wails文件选择
+     */
+    async handleWailsFileSelect() {
+        console.log('调用Wails文件选择对话框');
+        try {
+            const result = await SelectAudioFile();
+            console.log('Wails文件选择结果:', result);
+
+            if (result.success && result.file) {
+                const file = result.file;
+                console.log('Wails选择的文件:', file);
+
+                // 创建一个类似File对象的结构
+                const fileInfo = {
+                    name: file.name,
+                    size: file.size,
+                    type: file.type,
+                    lastModified: file.lastModified,
+                    path: file.path, // 这是真实的文件路径
+                    formattedSize: this.audioFileProcessor.formatFileSize(file.size),
+                    formattedType: this.audioFileProcessor.getFormattedFileType(file.type)
+                };
+
+                // 获取音频时长（这里简化处理）
+                try {
+                    // 对于Wails选择的文件，我们暂时跳过时长获取
+                    fileInfo.duration = 0;
+                    fileInfo.formattedDuration = '00:00';
+                } catch (error) {
+                    console.warn('获取音频时长失败:', error);
+                    fileInfo.duration = 0;
+                    fileInfo.formattedDuration = '00:00';
+                }
+
+                console.log('Wails文件信息已处理:', fileInfo);
+
+                // 存储到应用状态
+                window.audioApp.currentFile = fileInfo;
+
+                // 更新UI显示
+                const displayInfo = this.audioFileProcessor.createDisplayFileInfo(fileInfo);
+                this.uiController.displayFileInfo(displayInfo);
+
+                // 启用开始按钮
+                this.uiController.enableStartButton();
+
+                // 显示成功提示
+                this.uiController.showToast(`已选择文件: ${file.name}`, 'success');
+
+            } else {
+                console.log('用户取消了文件选择或选择失败:', result.error);
+                if (result.error) {
+                    this.uiController.showToast(`文件选择失败: ${result.error}`, 'error');
+                }
+            }
+
+        } catch (error) {
+            console.error('Wails文件选择出错:', error);
+            this.uiController.showToast(`文件选择出错: ${error.message}`, 'error');
+        }
+    }
+
+    /**
+     * 处理文件选择（用于拖拽）
      * @param {Event} event - 文件选择事件
      */
     async handleFileSelect(event) {

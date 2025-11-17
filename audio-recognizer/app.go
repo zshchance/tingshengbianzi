@@ -325,6 +325,74 @@ func (a *App) LoadModel(language, modelPath string) RecognitionResponse {
 	}
 }
 
+// SelectAudioFile 选择音频文件
+func (a *App) SelectAudioFile() map[string]interface{} {
+	dialogOptions := runtime.OpenDialogOptions{
+		Title:           "选择音频文件",
+		DefaultDirectory: "",
+		DefaultFilename:  "",
+		Filters: []runtime.FileFilter{
+			{
+				DisplayName: "音频文件 (*.mp3, *.wav, *.m4a, *.ogg, *.flac)",
+				Pattern:     "*.mp3;*.wav;*.m4a;*.ogg;*.flac",
+			},
+		},
+	}
+
+	selectedFile, err := runtime.OpenFileDialog(a.ctx, dialogOptions)
+	if err != nil {
+		return map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		}
+	}
+
+	if selectedFile == "" {
+		return map[string]interface{}{
+			"success": false,
+			"error":   "未选择文件",
+		}
+	}
+
+	// 获取文件信息
+	fileInfo, err := os.Stat(selectedFile)
+	if err != nil {
+		return map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("无法读取文件信息: %v", err),
+		}
+	}
+
+	// 获取文件扩展名来确定类型
+	ext := strings.ToLower(filepath.Ext(selectedFile))
+	var mimeType string
+	switch ext {
+	case ".mp3":
+		mimeType = "audio/mpeg"
+	case ".wav":
+		mimeType = "audio/wav"
+	case ".m4a":
+		mimeType = "audio/mp4"
+	case ".ogg":
+		mimeType = "audio/ogg"
+	case ".flac":
+		mimeType = "audio/flac"
+	default:
+		mimeType = "audio/" + ext[1:]
+	}
+
+	return map[string]interface{}{
+		"success": true,
+		"file": map[string]interface{}{
+			"name":         filepath.Base(selectedFile),
+			"path":         selectedFile,
+			"size":         fileInfo.Size(),
+			"type":         mimeType,
+			"lastModified": fileInfo.ModTime().UnixMilli(),
+		},
+	}
+}
+
 // ExportResult 导出识别结果
 func (a *App) ExportResult(resultJSON, format, outputPath string) RecognitionResponse {
 	var result models.RecognitionResult

@@ -18,6 +18,10 @@ export function LoadModel(arg1, arg2) {
   return window['go']['main']['App']['LoadModel'](arg1, arg2);
 }
 
+export function SelectAudioFile() {
+  return window['go']['main']['App']['SelectAudioFile']();
+}
+
 export function StartRecognition(arg1) {
   return window['go']['main']['App']['StartRecognition'](arg1);
 }
