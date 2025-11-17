@@ -12,6 +12,7 @@ import (
 
 	"audio-recognizer/backend/models"
 	"audio-recognizer/backend/audio"
+	"audio-recognizer/backend/utils"
 )
 
 // WhisperService Whisper语音识别服务
@@ -277,12 +278,17 @@ func (s *WhisperService) parseWhisperOutput(srtFile string, audioInfo *models.Au
 		return nil, fmt.Errorf("读取SRT文件失败: %w", err)
 	}
 
+	// 生成唯一ID
+	resultID := fmt.Sprintf("whisper_%d_%d", time.Now().Unix(), time.Now().UnixNano()%1000)
+
 	result := &models.RecognitionResult{
+		ID:          resultID,
 		Language:    language,
 		Duration:    audioInfo.Duration,
 		ProcessedAt: s.getCurrentTime(),
 		Metadata:    make(map[string]interface{}),
-		Words:       []models.WordResult{},
+		Words:       []models.Word{},
+		Segments:    []models.RecognitionResultSegment{},
 	}
 
 	// 解析SRT格式
@@ -290,7 +296,8 @@ func (s *WhisperService) parseWhisperOutput(srtFile string, audioInfo *models.Au
 	lines := strings.Split(srtContent, "\n")
 
 	var fullText strings.Builder
-	var wordSegments []models.WordResult
+	var wordSegments []models.Word
+	var segments []models.RecognitionResultSegment
 
 	i := 0
 	for i < len(lines) {
@@ -314,13 +321,29 @@ func (s *WhisperService) parseWhisperOutput(srtFile string, audioInfo *models.Au
 					// 解析时间戳
 					startTime, endTime := s.parseSRTPair(timestampLine)
 
-					// 添加到结果
-					wordSegments = append(wordSegments, models.WordResult{
-						Word:       simplifiedText,
-						StartTime:  startTime,
-						EndTime:    endTime,
+					// 添加到词汇结果（使用新的Word结构）
+					wordSegments = append(wordSegments, models.Word{
+						Text:       simplifiedText,
+						Start:      startTime,
+						End:        endTime,
 						Confidence: 0.8, // Whisper CLI不提供置信度，使用默认值
 					})
+
+					// 添加到段落结果
+					segment := models.RecognitionResultSegment{
+						Start:      time.Unix(0, int64(startTime*1e9)), // 转换为time.Time
+						End:        time.Unix(0, int64(endTime*1e9)),
+						Text:       simplifiedText,
+						Confidence: 0.8,
+						Words:      []models.Word{{
+							Text:       simplifiedText,
+							Start:      startTime,
+							End:        endTime,
+							Confidence: 0.8,
+						}},
+						Metadata: make(map[string]interface{}),
+					}
+					segments = append(segments, segment)
 
 					if fullText.Len() > 0 {
 						fullText.WriteString(" ")
@@ -336,8 +359,9 @@ func (s *WhisperService) parseWhisperOutput(srtFile string, audioInfo *models.Au
 		}
 	}
 
-	result.Text = fullText.String()
+	result.Text = s.addTimestampsToText(fullText.String(), wordSegments)
 	result.Words = wordSegments
+	result.Segments = segments
 
 	// 计算整体置信度
 	if len(wordSegments) > 0 {
@@ -350,7 +374,9 @@ func (s *WhisperService) parseWhisperOutput(srtFile string, audioInfo *models.Au
 	result.Metadata["sample_rate"] = audioInfo.SampleRate
 	result.Metadata["channels"] = audioInfo.Channels
 	result.Metadata["total_words"] = len(wordSegments)
+	result.Metadata["total_segments"] = len(segments)
 	result.Metadata["recognition_type"] = "whisper_cli"
+	result.Metadata["has_timestamps"] = true
 
 	return result, nil
 }
@@ -363,31 +389,43 @@ func (s *WhisperService) parseSRTPair(timestampLine string) (float64, float64) {
 		return 0, 0
 	}
 
-	startTime := s.parseSRTTime(parts[0])
-	endTime := s.parseSRTTime(parts[1])
+	startTime, _ := utils.ParseSRTTime(parts[0])
+	endTime, _ := utils.ParseSRTTime(parts[1])
 
 	return startTime, endTime
 }
 
-// parseSRTTime 解析SRT时间格式
-func (s *WhisperService) parseSRTTime(timeStr string) float64 {
-	// 格式: 00:00:00,000
-	parts := strings.Split(strings.TrimSpace(timeStr), ":")
-	if len(parts) != 3 {
-		return 0
+// addTimestampsToText 在文本中添加时间戳标记
+func (s *WhisperService) addTimestampsToText(text string, words []models.Word) string {
+	if len(words) == 0 {
+		return text
 	}
 
-	hours, _ := strconv.Atoi(parts[0])
-	minutes, _ := strconv.Atoi(parts[1])
-	secondsAndMs := strings.Split(parts[2], ",")
-	if len(secondsAndMs) != 2 {
-		return 0
+	var result strings.Builder
+	textWords := strings.Fields(text) // 按空格分割文本
+
+	wordIndex := 0
+	for i, textWord := range textWords {
+		if wordIndex < len(words) {
+			// 在每个词汇前添加时间戳
+			timestamp := utils.FormatTimestamp(words[wordIndex].Start)
+			if i > 0 {
+				result.WriteString(" ")
+			}
+			result.WriteString(timestamp)
+			result.WriteString(" ")
+			result.WriteString(textWord)
+			wordIndex++
+		} else {
+			// 如果没有对应的词汇信息，直接添加文本
+			if i > 0 {
+				result.WriteString(" ")
+			}
+			result.WriteString(textWord)
+		}
 	}
 
-	seconds, _ := strconv.Atoi(secondsAndMs[0])
-	milliseconds, _ := strconv.Atoi(secondsAndMs[1])
-
-	return float64(hours*3600 + minutes*60 + seconds) + float64(milliseconds)/1000.0
+	return result.String()
 }
 
 // getCurrentTime 获取当前时间

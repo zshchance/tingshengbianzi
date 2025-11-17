@@ -473,10 +473,10 @@ func (a *App) exportToSRT(result models.RecognitionResult) string {
 	var srt strings.Builder
 
 	for i, word := range result.Words {
-		startSec := int64(word.StartTime)
-		startMS := int64((word.StartTime - float64(startSec)) * 1000)
-		endSec := int64(word.EndTime)
-		endMS := int64((word.EndTime - float64(endSec)) * 1000)
+		startSec := int64(word.Start)
+		startMS := int64((word.Start - float64(startSec)) * 1000)
+		endSec := int64(word.End)
+		endMS := int64((word.End - float64(endSec)) * 1000)
 
 		startTime := time.Unix(startSec, startMS*int64(time.Millisecond))
 		endTime := time.Unix(endSec, endMS*int64(time.Millisecond))
@@ -485,7 +485,7 @@ func (a *App) exportToSRT(result models.RecognitionResult) string {
 		srt.WriteString(fmt.Sprintf("%s --> %s\n",
 			startTime.Format("15:04:05,000"),
 			endTime.Format("15:04:05,000")))
-		srt.WriteString(fmt.Sprintf("%s\n\n", word.Word))
+		srt.WriteString(fmt.Sprintf("%s\n\n", word.Text))
 	}
 
 	return srt.String()
@@ -497,8 +497,8 @@ func (a *App) exportToVTT(result models.RecognitionResult) string {
 	vtt.WriteString("WEBVTT\n\n")
 
 	for _, word := range result.Words {
-		vtt.WriteString(fmt.Sprintf("%.2f --> %.2f\n", word.StartTime, word.EndTime))
-		vtt.WriteString(fmt.Sprintf("%s\n\n", word.Word))
+		vtt.WriteString(fmt.Sprintf("%.2f --> %.2f\n", word.Start, word.End))
+		vtt.WriteString(fmt.Sprintf("%s\n\n", word.Text))
 	}
 
 	return vtt.String()

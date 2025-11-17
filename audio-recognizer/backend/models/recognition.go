@@ -4,16 +4,46 @@ import "time"
 
 // RecognitionResult 语音识别结果
 type RecognitionResult struct {
-	Language    string             `json:"language"`    // 识别语言
-	Text        string             `json:"text"`        // 识别文本
-	Words       []WordResult       `json:"words"`       // 词汇级结果
-	Duration    float64            `json:"duration"`    // 音频时长(秒)
-	Confidence  float64            `json:"confidence"`  // 整体置信度
-	ProcessedAt time.Time          `json:"processedAt"` // 处理时间
-	Metadata    map[string]interface{} `json:"metadata"` // 元数据
+	ID          string                `json:"id"`          // 识别结果ID
+	Language    string                `json:"language"`    // 识别语言
+	Text        string                `json:"text"`        // 识别文本
+	Segments    []RecognitionResultSegment `json:"segments"`    // 识别结果段落
+	Words       []Word                `json:"words"`       // 词汇级结果
+	Duration    float64               `json:"duration"`    // 音频时长(秒)
+	Confidence  float64               `json:"confidence"`  // 整体置信度
+	ProcessedAt time.Time             `json:"processedAt"` // 处理时间
+	Metadata    map[string]interface{} `json:"metadata"`   // 元数据
 }
 
-// WordResult 词汇级识别结果
+// RecognitionResultSegment 识别结果段落
+type RecognitionResultSegment struct {
+	Start      time.Time              `json:"start"`      // 开始时间
+	End        time.Time              `json:"end"`        // 结束时间
+	Text       string                 `json:"text"`       // 文本内容
+	Confidence float64                `json:"confidence"` // 置信度
+	Words      []Word                 `json:"words"`      // 词汇信息
+	Metadata   map[string]interface{} `json:"metadata"`   // 元数据
+}
+
+// Word 词汇信息（符合设计文档规范）
+type Word struct {
+	Text       string  `json:"text"`       // 词汇内容
+	Start      float64 `json:"start"`      // 开始时间(秒)
+	End        float64 `json:"end"`        // 结束时间(秒)
+	Confidence float64 `json:"confidence"` // 置信度
+	Speaker    string  `json:"speaker,omitempty"` // 说话人
+}
+
+// SpecialMark 特殊标记类型
+type SpecialMark struct {
+	Type      string  `json:"type"`      // 标记类型：emphasis, pause, unclear, music, speaker, language
+	StartTime float64 `json:"startTime"` // 开始时间(秒)
+	EndTime   float64 `json:"endTime"`   // 结束时间(秒)
+	Content   string  `json:"content"`   // 标记内容
+	Metadata  map[string]interface{} `json:"metadata"` // 额外元数据
+}
+
+// WordResult 词汇级识别结果（向后兼容）
 type WordResult struct {
 	Word       string  `json:"word"`       // 词汇
 	StartTime  float64 `json:"startTime"`  // 开始时间(秒)

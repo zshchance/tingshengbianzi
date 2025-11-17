@@ -509,20 +509,59 @@ export class UIController {
     generateOriginalTextWithTimestamps(result) {
         if (!result) return '';
 
-        // 如果有words数组，生成带时间戳的文本
+        // 如果结果文本已经包含时间戳，直接显示
+        if (result.text && this.containsTimestamps(result.text)) {
+            let text = '<div class="transcript-result">';
+            text += this.formatTextWithTimestamps(result.text);
+            text += '</div>';
+
+            // 添加词汇级详细信息
+            if (result.words && Array.isArray(result.words) && result.words.length > 0) {
+                text += '<div class="word-details" style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">';
+                text += '<h4>词汇详细信息：</h4>';
+                text += '<div class="word-list">';
+
+                result.words.forEach((word, index) => {
+                    if (word.text || word.word) {
+                        const wordText = word.text || word.word;
+                        const startTime = word.start !== undefined ? this.formatTimestamp(word.start) : '';
+                        const endTime = word.end !== undefined ? this.formatTimestamp(word.end) : '';
+                        const confidence = word.confidence !== undefined ? (word.confidence * 100).toFixed(1) : '';
+
+                        text += `<div class="word-item" data-index="${index}" style="margin-bottom: 8px; padding: 5px; background: white; border-radius: 4px;">`;
+                        if (startTime) {
+                            text += `<span class="word-timestamp" style="color: #007bff; font-weight: bold;">[${startTime}]</span> `;
+                        }
+                        text += `<span class="word-text" style="font-size: 14px;">${this.escapeHtml(wordText)}</span>`;
+                        if (confidence) {
+                            text += ` <span class="word-confidence" style="color: #6c757d; font-size: 12px;">(${confidence}%)</span>`;
+                        }
+                        text += '</div>';
+                    }
+                });
+
+                text += '</div>';
+                text += '</div>';
+            }
+
+            return text;
+        }
+
+        // 如果有words数组但没有时间戳，生成带时间戳的文本
         if (result.words && Array.isArray(result.words) && result.words.length > 0) {
             let text = '<div class="transcript-result">';
 
             result.words.forEach((word, index) => {
-                if (word.word) {
-                    const startTime = word.startTime !== undefined ? this.formatDisplayTime(word.startTime) : '';
-                    const endTime = word.endTime !== undefined ? this.formatDisplayTime(word.endTime) : '';
+                const wordText = word.text || word.word;
+                if (wordText) {
+                    const startTime = word.start !== undefined ? word.start : word.startTime;
+                    const endTime = word.end !== undefined ? word.end : word.endTime;
 
-                    text += `<div class="word-segment" data-index="${index}">`;
-                    if (startTime) {
-                        text += `<span class="timestamp">[${startTime}]</span> `;
+                    text += `<div class="word-segment" data-index="${index}" style="margin-bottom: 8px;">`;
+                    if (startTime !== undefined) {
+                        text += `<span class="timestamp" style="color: #007bff; font-weight: bold; font-family: monospace;">[${this.formatTimestamp(startTime)}]</span> `;
                     }
-                    text += `<span class="word-text">${this.escapeHtml(word.word)}</span>`;
+                    text += `<span class="word-text">${this.escapeHtml(wordText)}</span>`;
                     text += '</div>';
                 }
             });
@@ -540,16 +579,43 @@ export class UIController {
     }
 
     /**
-     * 格式化显示时间
+     * 格式化时间戳为 [HH:MM:SS.mmm] 格式
      * @param {number} seconds - 秒数
-     * @returns {string} 格式化的时间字符串
+     * @returns {string} 格式化的时间戳
      */
-    formatDisplayTime(seconds) {
-        const minutes = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        const ms = Math.floor((seconds % 1) * 100);
+    formatTimestamp(seconds) {
+        if (seconds < 0) seconds = 0;
 
-        return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(ms).padStart(2, '0')}`;
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = Math.floor(seconds % 60);
+        const milliseconds = Math.floor((seconds % 1) * 1000);
+
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(milliseconds).padStart(3, '0')}`;
+    }
+
+    /**
+     * 检查文本是否包含时间戳
+     * @param {string} text - 文本
+     * @returns {boolean} 是否包含时间戳
+     */
+    containsTimestamps(text) {
+        const timestampPattern = /\[\d{2}:\d{2}:\d{2}\.\d{3}\]/;
+        return timestampPattern.test(text);
+    }
+
+    /**
+     * 格式化包含时间戳的文本
+     * @param {string} text - 包含时间戳的文本
+     * @returns {string} 格式化后的HTML
+     */
+    formatTextWithTimestamps(text) {
+        // 将时间戳高亮显示
+        const timestampPattern = /\[(\d{2}:\d{2}:\d{2}\.\d{3})\]/g;
+
+        return text.replace(timestampPattern, (match, timestamp) => {
+            return `<span class="timestamp-highlight" style="color: #007bff; font-weight: bold; font-family: monospace; background: #e7f3ff; padding: 2px 4px; border-radius: 3px;">[${timestamp}]</span>`;
+        });
     }
 
     /**
@@ -672,15 +738,31 @@ export class UIController {
             return '没有识别结果可用于优化';
         }
 
-        return `请优化以下音频识别结果：
+        return `请优化以下音频识别结果，要求：
 
-要求：
-1. 修正明显的错别字和语法错误
-2. 优化断句和标点符号
-3. 保留所有时间标记 [HH:MM:SS.mmm] 不变
-4. 处理特殊标记：
-   - 【不清:xxx】→ 根据上下文推测或标记为[听不清]
-   - 【音乐】...【/音乐】→ 保留音乐片段标记
+1. 基础优化
+   - 修正明显的错别字和语法错误
+   - 优化断句和标点符号
+   - 保持语义完整性和连贯性
+
+2. 标记处理
+   - 保留所有时间标记 [HH:MM:SS.mmm] 不变
+   - 处理特殊标记：
+     * 【强调】...【/强调】→ 保留并优化强调内容
+     * 【不清:xxx】→ 根据上下文推测或标记为[听不清]
+     * 【音乐】...【/音乐】→ 保留音乐片段标记
+     * 【停顿·短/中/长】→ 转换为合适的标点符号
+
+3. 内容优化
+   - 修正专业术语和专有名词
+   - 优化口语化表达
+   - 保持原文语气和风格
+   - 识别并标记重要信息
+
+4. 输出格式
+   - 保持原有时间标记格式
+   - 使用规范的标点符号
+   - 段落清晰，便于阅读
 
 原始识别结果：
 ${result.text}
@@ -698,20 +780,42 @@ ${result.text}
             return result.text || '';
         }
 
-        // 使用words数组中的时间信息生成SRT格式字幕
-        let subtitle = '';
+        // 生成SRT格式字幕
+        let srtContent = '';
         result.words.forEach((word, index) => {
-            if (word.word && word.startTime !== undefined && word.endTime !== undefined) {
-                const startTime = this.formatSRTTime(word.startTime);
-                const endTime = this.formatSRTTime(word.endTime);
+            const wordText = word.text || word.word;
+            if (wordText && ((word.start !== undefined && word.end !== undefined) ||
+                           (word.startTime !== undefined && word.endTime !== undefined))) {
 
-                subtitle += `${index + 1}\n`;
-                subtitle += `${startTime} --> ${endTime}\n`;
-                subtitle += `${word.word}\n\n`;
+                const startTime = word.start !== undefined ? word.start : word.startTime;
+                const endTime = word.end !== undefined ? word.end : word.endTime;
+
+                const srtStartTime = this.formatSRTTime(startTime);
+                const srtEndTime = this.formatSRTTime(endTime);
+
+                srtContent += `${index + 1}\n`;
+                srtContent += `${srtStartTime} --> ${srtEndTime}\n`;
+                srtContent += `${wordText}\n\n`;
             }
         });
 
-        return subtitle.trim() || result.text || '';
+        // 如果没有SRT内容，返回带时间戳的文本
+        if (!srtContent && result.text) {
+            // 如果文本包含时间戳，直接返回
+            if (this.containsTimestamps(result.text)) {
+                return result.text;
+            }
+
+            // 否则生成简单的字幕格式
+            const words = result.text.split(' ');
+            words.forEach((word, index) => {
+                srtContent += `${index + 1}\n`;
+                srtContent += `00:00:00,000 --> 00:00:02,000\n`;
+                srtContent += `${word}\n\n`;
+            });
+        }
+
+        return srtContent.trim() || result.text || '';
     }
 
     /**
@@ -720,6 +824,8 @@ ${result.text}
      * @returns {string} SRT时间格式
      */
     formatSRTTime(seconds) {
+        if (seconds < 0) seconds = 0;
+
         const hours = Math.floor(seconds / 3600);
         const minutes = Math.floor((seconds % 3600) / 60);
         const secs = Math.floor(seconds % 60);

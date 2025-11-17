@@ -71,28 +71,74 @@ export namespace models {
 	        this.details = source["details"];
 	    }
 	}
-	export class WordResult {
-	    word: string;
-	    startTime: number;
-	    endTime: number;
+	export class Word {
+	    text: string;
+	    start: number;
+	    end: number;
 	    confidence: number;
+	    speaker?: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new WordResult(source);
+	        return new Word(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.word = source["word"];
-	        this.startTime = source["startTime"];
-	        this.endTime = source["endTime"];
+	        this.text = source["text"];
+	        this.start = source["start"];
+	        this.end = source["end"];
 	        this.confidence = source["confidence"];
+	        this.speaker = source["speaker"];
 	    }
 	}
+	export class RecognitionResultSegment {
+	    // Go type: time
+	    start: any;
+	    // Go type: time
+	    end: any;
+	    text: string;
+	    confidence: number;
+	    words: Word[];
+	    metadata: Record<string, any>;
+	
+	    static createFrom(source: any = {}) {
+	        return new RecognitionResultSegment(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.start = this.convertValues(source["start"], null);
+	        this.end = this.convertValues(source["end"], null);
+	        this.text = source["text"];
+	        this.confidence = source["confidence"];
+	        this.words = this.convertValues(source["words"], Word);
+	        this.metadata = source["metadata"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class RecognitionResult {
+	    id: string;
 	    language: string;
 	    text: string;
-	    words: WordResult[];
+	    segments: RecognitionResultSegment[];
+	    words: Word[];
 	    duration: number;
 	    confidence: number;
 	    // Go type: time
@@ -105,9 +151,11 @@ export namespace models {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
 	        this.language = source["language"];
 	        this.text = source["text"];
-	        this.words = this.convertValues(source["words"], WordResult);
+	        this.segments = this.convertValues(source["segments"], RecognitionResultSegment);
+	        this.words = this.convertValues(source["words"], Word);
 	        this.duration = source["duration"];
 	        this.confidence = source["confidence"];
 	        this.processedAt = this.convertValues(source["processedAt"], null);
@@ -132,6 +180,7 @@ export namespace models {
 		    return a;
 		}
 	}
+	
 
 }
 

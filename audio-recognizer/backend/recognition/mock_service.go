@@ -86,7 +86,7 @@ func (s *MockService) RecognizeFile(audioPath string, language string, progressC
 
 	// 生成模拟的识别文本
 	var mockText strings.Builder
-	var mockWords []models.WordResult
+	var mockWords []models.Word
 
 	// 根据语言生成不同的模拟文本
 	texts := s.getMockTexts(language)
@@ -114,10 +114,10 @@ func (s *MockService) RecognizeFile(audioPath string, language string, progressC
 		confidence := 0.7 + rand.Float64()*0.3 // 0.7-1.0之间
 
 		// 添加到结果
-		mockWords = append(mockWords, models.WordResult{
-			Word:       word,
-			StartTime:  startTime,
-			EndTime:    endTime,
+		mockWords = append(mockWords, models.Word{
+			Text:       word,
+			Start:      startTime,
+			End:        endTime,
 			Confidence: confidence,
 		})
 
