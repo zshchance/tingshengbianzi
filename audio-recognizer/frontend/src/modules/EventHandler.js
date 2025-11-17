@@ -19,6 +19,22 @@ export class EventHandler {
      * 初始化所有UI事件监听器
      */
     initEventListeners() {
+        // 确保DOM已经加载完成
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                this.doInitEventListeners();
+            });
+        } else {
+            this.doInitEventListeners();
+        }
+    }
+
+    /**
+     * 执行事件监听器初始化
+     */
+    doInitEventListeners() {
+        console.log('开始初始化UI事件监听器');
+
         // 文件相关事件
         this.initFileEvents();
 
@@ -43,14 +59,19 @@ export class EventHandler {
     initFileEvents() {
         // 文件选择按钮
         this.addEventListener('selectFileBtn', 'click', () => {
+            console.log('选择文件按钮被点击');
             const fileInput = document.getElementById('fileInput');
             if (fileInput) {
+                console.log('找到文件输入元素，触发点击');
                 fileInput.click();
+            } else {
+                console.error('找不到文件输入元素');
             }
         });
 
         // 文件输入变化
         this.addEventListener('fileInput', 'change', (e) => {
+            console.log('文件输入变化事件触发');
             this.handleFileSelect(e);
         });
 
@@ -184,10 +205,16 @@ export class EventHandler {
                 this.handleDragLeave(e);
             });
 
-            dropZone.addEventListener('click', () => {
-                const fileInput = document.getElementById('fileInput');
-                if (fileInput) {
-                    fileInput.click();
+            dropZone.addEventListener('click', (e) => {
+                // 检查点击是否来自选择文件按钮，如果不是才触发文件选择
+                if (e.target.id !== 'selectFileBtn' && !e.target.closest('#selectFileBtn')) {
+                    console.log('拖拽区域被点击，触发文件选择');
+                    const fileInput = document.getElementById('fileInput');
+                    if (fileInput) {
+                        fileInput.click();
+                    }
+                } else {
+                    console.log('点击的是选择文件按钮，不触发拖拽区域的点击事件');
                 }
             });
         }
@@ -230,6 +257,7 @@ export class EventHandler {
         const element = document.getElementById(id);
         if (element) {
             element.addEventListener(event, handler);
+            console.log(`事件监听器已添加: ${id}.${event}`);
         } else {
             console.warn(`Element with id '${id}' not found`);
         }
@@ -240,9 +268,28 @@ export class EventHandler {
      * @param {Event} event - 文件选择事件
      */
     async handleFileSelect(event) {
+        console.log('handleFileSelect被调用');
+        console.log('event.target:', event.target);
+        console.log('event.target.files:', event.target.files);
+
         const file = event.target.files[0];
         if (file) {
-            await this.processAudioFile(file);
+            console.log('文件选择事件触发:', {
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                path: file.path,
+                webkitRelativePath: file.webkitRelativePath
+            });
+
+            try {
+                await this.processAudioFile(file);
+                console.log('processAudioFile完成');
+            } catch (error) {
+                console.error('processAudioFile出错:', error);
+            }
+        } else {
+            console.log('未选择文件');
         }
     }
 
@@ -286,21 +333,29 @@ export class EventHandler {
      * @param {File} file - 音频文件
      */
     async processAudioFile(file) {
+        console.log('processAudioFile开始处理文件:', file.name);
+
         try {
             // 验证并处理文件
+            console.log('调用audioFileProcessor.processAudioFile');
             const fileInfo = await this.audioFileProcessor.processAudioFile(file);
+            console.log('文件处理完成，fileInfo:', fileInfo);
 
             // 存储到应用状态
             window.audioApp.currentFile = fileInfo;
+            console.log('文件信息已存储到window.audioApp.currentFile');
 
             // 更新UI显示
             const displayInfo = this.audioFileProcessor.createDisplayFileInfo(fileInfo);
+            console.log('调用uiController.displayFileInfo');
             this.uiController.displayFileInfo(displayInfo);
 
             // 启用开始按钮
+            console.log('调用uiController.enableStartButton');
             this.uiController.enableStartButton();
 
             // 显示成功提示
+            console.log('显示成功提示');
             this.uiController.showToast(`已选择文件: ${file.name}`, 'success');
 
         } catch (error) {

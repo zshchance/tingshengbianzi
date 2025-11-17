@@ -61,7 +61,7 @@ export class AudioFileProcessor {
                 size: file.size,
                 type: file.type,
                 lastModified: file.lastModified,
-                path: file.path || file.name, // 对于拖拽的文件，Wails会提供真实路径
+                path: file.path || file.webkitRelativePath || file.name, // Wails文件路径或回退到文件名
                 formattedSize: this.formatFileSize(file.size),
                 formattedType: this.getFormattedFileType(file.type)
             };
