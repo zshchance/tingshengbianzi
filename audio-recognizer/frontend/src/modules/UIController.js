@@ -548,24 +548,28 @@ export class UIController {
     generateOriginalTextWithTimestamps(result) {
         if (!result) return '';
 
-        // 生成精简的带时间戳的文本，不包含HTML标签
-        let resultText = '';
+        // 优先使用words数组的准确时间信息进行细颗粒度估算
+        if (result.words && Array.isArray(result.words) && result.words.length > 0) {
+            // 检查words数组是否包含准确的时间信息
+            const hasValidTimeInfo = result.words.some(word => {
+                const startTime = word.start !== undefined ? word.start : word.startTime;
+                const endTime = word.end !== undefined ? word.end : word.endTime;
+                return startTime !== undefined && endTime !== undefined;
+            });
 
-        // 如果结果文本已经包含时间戳，处理格式并移除纯标点行
+            if (hasValidTimeInfo) {
+                // 使用准确的words时间信息生成细颗粒度时间戳
+                return this.generateTimestampedText(result.words);
+            }
+        }
+
+        // 如果没有准确的words时间信息，但文本包含时间戳，处理格式
         if (result.text && this.containsTimestamps(result.text)) {
-            resultText = this.formatOriginalTimestamps(result.text);
-        }
-        // 如果有words数组但没有时间戳，生成带时间戳的文本
-        else if (result.words && Array.isArray(result.words) && result.words.length > 0) {
-            // 每个时间标记独立一行
-            resultText = this.generateTimestampedText(result.words);
-        }
-        // 如果没有时间戳信息，返回普通文本
-        else {
-            resultText = result.text || '';
+            return this.formatOriginalTimestamps(result.text);
         }
 
-        return resultText;
+        // 如果没有时间戳信息，返回普通文本
+        return result.text || '';
     }
 
     /**
@@ -574,34 +578,288 @@ export class UIController {
      * @returns {string} 带时间戳的文本
      */
     generateTimestampedText(words) {
+        if (!words || words.length === 0) return '';
+
+        // 收集所有有完整时间信息的词汇
+        const wordsWithTime = words.filter(word => {
+            const startTime = word.start !== undefined ? word.start : word.startTime;
+            const endTime = word.end !== undefined ? word.end : word.endTime;
+            return startTime !== undefined && endTime !== undefined;
+        });
+
+        if (wordsWithTime.length === 0) {
+            // 如果没有时间信息，直接返回文本
+            return words.map(w => w.text || w.word).join(' ');
+        }
+
+        // 计算总时间和总字符数
+        const totalStartTime = Math.min(...wordsWithTime.map(w => w.start !== undefined ? w.start : w.startTime));
+        const totalEndTime = Math.max(...wordsWithTime.map(w => w.end !== undefined ? w.end : w.endTime));
+        const totalDuration = totalEndTime - totalStartTime;
+
+        // 计算总字符数（包括标点符号）
+        const totalText = words.map(w => w.text || w.word).join('');
+        const totalChars = this.countTextCharacters(totalText);
+
+        // 计算平均语速（字符/秒）
+        const avgCharsPerSecond = totalChars / totalDuration;
+
+        // 使用新的时间估算算法
+        return this.generateTextWithDynamicTiming(words, totalStartTime, avgCharsPerSecond);
+    }
+
+    /**
+     * 使用动态语速生成带时间戳的文本（基于whisper准确时间范围）
+     * @param {Array} words - 词汇数组
+     * @param {number} baseStartTime - 基准开始时间
+     * @param {number} charsPerSecond - 每秒字符数（语速）
+     * @returns {string} 带时间戳的文本
+     */
+    generateTextWithDynamicTiming(words, baseStartTime, charsPerSecond) {
         const textLines = [];
+
+        // 按照whisper的时间段进行分组
+        const timeGroups = this.groupWordsByTimeRanges(words);
+
+        timeGroups.forEach((group) => {
+            if (group.words.length === 0) return;
+
+            // 获取该组的准确时间范围
+            const groupStartTime = group.startTime;
+            const groupEndTime = group.endTime;
+            const groupDuration = groupEndTime - groupStartTime;
+
+            // 组合该组的文本
+            const groupText = group.words.map(w => w.text || w.word).join('');
+
+            // 按标点符号分割文本
+            const segments = this.splitTextForTiming(groupText);
+
+            // 在准确时间范围内分配细颗粒度时间
+            const segmentTimestamps = this.distributeTimeWithinRange(
+                segments, groupStartTime, groupEndTime
+            );
+
+            segments.forEach((segment, index) => {
+                const trimmedSegment = segment.trim();
+
+                // 跳过空段和纯标点符号段
+                if (!trimmedSegment || this.isOnlyPunctuation(trimmedSegment)) {
+                    return;
+                }
+
+                // 使用分配的时间戳
+                const timestamp = this.formatTimestamp(segmentTimestamps[index]);
+                textLines.push(`[${timestamp}] ${trimmedSegment}`);
+            });
+        });
+
+        return textLines.join('\n');
+    }
+
+    /**
+     * 按时间范围将词汇分组
+     * @param {Array} words - 词汇数组
+     * @returns {Array} 时间分组
+     */
+    groupWordsByTimeRanges(words) {
+        const groups = [];
+        let currentGroup = [];
 
         words.forEach((word) => {
             const wordText = word.text || word.word;
-            if (wordText) {
-                const startTime = word.start !== undefined ? word.start : word.startTime;
-                if (startTime !== undefined) {
-                    const timestamp = this.formatTimestamp(startTime);
-                    // 按标点符号分割文本，每个部分独立一行
-                    const segments = this.splitTextByPunctuation(wordText);
-                    segments.forEach((segment, index) => {
-                        if (segment.trim() && !this.isOnlyPunctuation(segment.trim())) {
-                            // 为后续片段添加微小的偏移量
-                            const segmentTime = startTime + (index * 0.1);
-                            const segmentTimestamp = this.formatTimestamp(segmentTime);
-                            textLines.push(`[${segmentTimestamp}] ${segment.trim()}`);
-                        }
+            const startTime = word.start !== undefined ? word.start : word.startTime;
+            const endTime = word.end !== undefined ? word.end : word.endTime;
+
+            if (startTime !== undefined && endTime !== undefined) {
+                // 如果是连续的时间段，添加到当前组
+                if (currentGroup.length === 0 ||
+                    startTime - currentGroup[currentGroup.length - 1].endTime <= 1.0) {
+                    currentGroup.push({
+                        text: wordText,
+                        startTime: startTime,
+                        endTime: endTime
                     });
                 } else {
-                    // 没有时间戳的文本，如果不是纯标点符号则保留
-                    if (!this.isOnlyPunctuation(wordText.trim())) {
-                        textLines.push(wordText);
+                    // 时间间隔太大，开始新组
+                    if (currentGroup.length > 0) {
+                        const groupStartTime = Math.min(...currentGroup.map(w => w.startTime));
+                        const groupEndTime = Math.max(...currentGroup.map(w => w.endTime));
+                        groups.push({
+                            words: currentGroup,
+                            startTime: groupStartTime,
+                            endTime: groupEndTime
+                        });
                     }
+                    currentGroup = [{
+                        text: wordText,
+                        startTime: startTime,
+                        endTime: endTime
+                    }];
+                }
+            } else {
+                // 没有时间信息的词，添加到当前组
+                currentGroup.push({
+                    text: wordText,
+                    startTime: null,
+                    endTime: null
+                });
+            }
+        });
+
+        // 处理最后一组
+        if (currentGroup.length > 0) {
+            const validWords = currentGroup.filter(w => w.startTime !== null && w.endTime !== null);
+            if (validWords.length > 0) {
+                const groupStartTime = Math.min(...validWords.map(w => w.startTime));
+                const groupEndTime = Math.max(...validWords.map(w => w.endTime));
+                groups.push({
+                    words: currentGroup,
+                    startTime: groupStartTime,
+                    endTime: groupEndTime
+                });
+            }
+        }
+
+        return groups;
+    }
+
+    /**
+     * 在时间范围内分配细颗粒度时间戳
+     * @param {Array} segments - 文本片段数组
+     * @param {number} startTime - 开始时间
+     * @param {number} endTime - 结束时间
+     * @returns {Array} 分配的时间戳数组
+     */
+    distributeTimeWithinRange(segments, startTime, endTime) {
+        const totalDuration = endTime - startTime;
+        const timestamps = [];
+        let currentTime = startTime;
+
+        // 计算每个文本片段的字符权重
+        const charWeights = segments.map(segment => {
+            return this.countTextCharacters(segment.trim());
+        });
+
+        const totalChars = charWeights.reduce((sum, weight) => sum + weight, 0);
+
+        // 如果没有字符，平均分配时间
+        if (totalChars === 0) {
+            const avgDuration = totalDuration / segments.length;
+            for (let i = 0; i < segments.length; i++) {
+                timestamps.push(startTime + (i * avgDuration));
+            }
+            return timestamps;
+        }
+
+        // 按字符权重分配时间
+        segments.forEach((segment, index) => {
+            const trimmedSegment = segment.trim();
+
+            // 跳过空段和纯标点符号段
+            if (!trimmedSegment || this.isOnlyPunctuation(trimmedSegment)) {
+                timestamps.push(currentTime);
+                return;
+            }
+
+            // 计算该片段的时间
+            const segmentChars = charWeights[index];
+            const segmentDuration = (segmentChars / totalChars) * totalDuration;
+
+            timestamps.push(currentTime);
+            currentTime += segmentDuration;
+
+            // 为标点符号添加额外停顿时间（但要确保不超出总时间范围）
+            const lastChar = trimmedSegment[trimmedSegment.length - 1];
+            if ('，。！？；：、'.includes(lastChar) && currentTime < endTime - 0.1) {
+                if ('。！？'.includes(lastChar)) {
+                    currentTime += Math.min(0.5, endTime - currentTime - 0.1);
+                } else if ('；：'.includes(lastChar)) {
+                    currentTime += Math.min(0.3, endTime - currentTime - 0.1);
+                } else {
+                    currentTime += Math.min(0.2, endTime - currentTime - 0.1);
                 }
             }
         });
 
-        return textLines.join('\n');
+        // 确保最后一个时间戳不超过结束时间
+        if (timestamps[timestamps.length - 1] > endTime) {
+            timestamps[timestamps.length - 1] = endTime;
+        }
+
+        return timestamps;
+    }
+
+    /**
+     * 计算文本的字符数（中文算1个字符，英文单词算1个字符）
+     * @param {string} text - 要计算的文本
+     * @returns {number} 字符数
+     */
+    countTextCharacters(text) {
+        let count = 0;
+
+        for (let i = 0; i < text.length; i++) {
+            const char = text[i];
+
+            // 中文字符、标点符号、数字都算1个字符
+            if (/[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/.test(char)) {
+                count += 1;
+            }
+            // 英文字母按单词计算
+            else if (/[a-zA-Z]/.test(char)) {
+                // 检查是否是一个新单词的开始
+                if (i === 0 || !/[a-zA-Z]/.test(text[i-1])) {
+                    // 找到完整单词
+                    let wordEnd = i;
+                    while (wordEnd < text.length && /[a-zA-Z]/.test(text[wordEnd])) {
+                        wordEnd++;
+                    }
+                    count += 1; // 整个单词算1个字符单位
+                    i = wordEnd - 1; // 跳过已经计算的字符
+                }
+            }
+            // 其他字符（数字、空格等）适当计算
+            else if (!/\s/.test(char)) {
+                count += 0.5;
+            }
+        }
+
+        return count;
+    }
+
+    /**
+     * 为时间估算分割文本
+     * @param {string} text - 要分割的文本
+     * @returns {Array} 分割后的文本片段
+     */
+    splitTextForTiming(text) {
+        const segments = [];
+        let currentSegment = '';
+
+        for (let i = 0; i < text.length; i++) {
+            const char = text[i];
+            const isPunctuation = '，。！？；：、…,.!?:;\'"'.includes(char);
+
+            if (isPunctuation) {
+                // 如果有当前内容，先保存
+                if (currentSegment.trim()) {
+                    segments.push(currentSegment.trim());
+                }
+                // 标点符号作为独立片段
+                segments.push(char);
+                currentSegment = '';
+            } else {
+                currentSegment += char;
+            }
+        }
+
+        // 添加最后一段
+        if (currentSegment.trim()) {
+            segments.push(currentSegment.trim());
+        }
+
+        // 合并过短的片段，但保持时间估算的精度
+        return this.mergeVeryShortSegments(segments);
     }
 
     /**
@@ -919,14 +1177,24 @@ ${result.text}
     generateSubtitleFormat(result) {
         if (!result) return '';
 
-        // 如果结果文本已经包含时间戳，转换为字幕格式
-        if (result.text && this.containsTimestamps(result.text)) {
-            return this.formatTimestampsToSubtitle(result.text);
+        // 优先使用words数组的准确时间信息
+        if (result.words && Array.isArray(result.words) && result.words.length > 0) {
+            // 检查words数组是否包含准确的时间信息
+            const hasValidTimeInfo = result.words.some(word => {
+                const startTime = word.start !== undefined ? word.start : word.startTime;
+                const endTime = word.end !== undefined ? word.end : word.endTime;
+                return startTime !== undefined && endTime !== undefined;
+            });
+
+            if (hasValidTimeInfo) {
+                // 使用准确的words时间信息生成字幕格式
+                return this.generateWordsSubtitleFormat(result.words);
+            }
         }
 
-        // 如果有words数组，生成字幕格式
-        if (result.words && Array.isArray(result.words) && result.words.length > 0) {
-            return this.generateWordsSubtitleFormat(result.words);
+        // 如果没有准确的words时间信息，但文本包含时间戳，转换为字幕格式
+        if (result.text && this.containsTimestamps(result.text)) {
+            return this.formatTimestampsToSubtitle(result.text);
         }
 
         // 否则返回普通文本
