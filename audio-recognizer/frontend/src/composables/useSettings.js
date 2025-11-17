@@ -200,6 +200,21 @@ export function useSettings() {
     isDirty.value = true
   }, { deep: true })
 
+  // 自动保存重要设置
+  watch(settings, (newSettings, oldSettings) => {
+    // 只在重要设置改变时自动保存
+    const importantKeys = ['modelPath', 'recognitionLanguage', 'enableWordTimestamp', 'confidenceThreshold']
+    const hasImportantChange = importantKeys.some(key => newSettings[key] !== oldSettings[key])
+
+    if (hasImportantChange) {
+      console.log('🔧 重要设置已更改，自动保存')
+      // 延迟保存，避免频繁保存
+      setTimeout(() => {
+        saveSettings()
+      }, 500)
+    }
+  }, { deep: true })
+
   // 导出设置
   const exportSettings = () => {
     const dataStr = JSON.stringify(settings, null, 2)

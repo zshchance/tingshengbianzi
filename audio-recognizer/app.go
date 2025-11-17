@@ -326,6 +326,190 @@ func (a *App) LoadModel(language, modelPath string) RecognitionResponse {
 	}
 }
 
+// SelectModelDirectory 选择模型文件夹
+func (a *App) SelectModelDirectory() map[string]interface{} {
+	dialogOptions := runtime.OpenDialogOptions{
+		Title:            "选择模型文件夹",
+		DefaultDirectory: "",
+		DefaultFilename:  "",
+		Filters:          []runtime.FileFilter{}, // 不使用文件过滤器，显示所有文件夹
+	}
+
+	selectedDirectory, err := runtime.OpenDirectoryDialog(a.ctx, dialogOptions)
+	if err != nil {
+		return map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		}
+	}
+
+	if selectedDirectory == "" {
+		return map[string]interface{}{
+			"success": false,
+			"error":   "未选择文件夹",
+		}
+	}
+
+	// 检查目录是否存在
+	fileInfo, err := os.Stat(selectedDirectory)
+	if err != nil {
+		return map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("无法访问文件夹: %v", err),
+		}
+	}
+
+	if !fileInfo.IsDir() {
+		return map[string]interface{}{
+			"success": false,
+			"error":   "选择的路径不是文件夹",
+		}
+	}
+
+	// 扫描目录中的模型文件
+	models := a.scanModelFiles(selectedDirectory)
+
+	return map[string]interface{}{
+		"success": true,
+		"path":    selectedDirectory,
+		"models":  models,
+	}
+}
+
+// scanModelFiles 扫描模型文件夹
+func (a *App) scanModelFiles(directory string) []map[string]interface{} {
+	var models []map[string]interface{}
+
+	// 检查Whisper模型文件
+	whisperModels := []string{
+		"ggml-base.bin",
+		"ggml-small.bin",
+		"ggml-medium.bin",
+		"ggml-large.bin",
+		"ggml-large-v1.bin",
+		"ggml-large-v2.bin",
+		"ggml-large-v3.bin",
+		"ggml-tiny.bin",
+	}
+
+	for _, modelFile := range whisperModels {
+		modelPath := filepath.Join(directory, modelFile)
+		if fileInfo, err := os.Stat(modelPath); err == nil {
+			size := fileInfo.Size()
+			sizeStr := a.formatFileSize(size)
+			models = append(models, map[string]interface{}{
+				"name":    modelFile,
+				"path":    modelPath,
+				"type":    "whisper",
+				"size":    size,
+				"sizeStr": sizeStr,
+			})
+		}
+	}
+
+	// 检查whisper子目录
+	whisperDir := filepath.Join(directory, "whisper")
+	if dirInfo, err := os.Stat(whisperDir); err == nil && dirInfo.IsDir() {
+		for _, modelFile := range whisperModels {
+			modelPath := filepath.Join(whisperDir, modelFile)
+			if fileInfo, err := os.Stat(modelPath); err == nil {
+				size := fileInfo.Size()
+				sizeStr := a.formatFileSize(size)
+				models = append(models, map[string]interface{}{
+					"name":    filepath.Join("whisper", modelFile),
+					"path":    modelPath,
+					"type":    "whisper",
+					"size":    size,
+					"sizeStr": sizeStr,
+				})
+			}
+		}
+	}
+
+	return models
+}
+
+// formatFileSize 格式化文件大小
+func (a *App) formatFileSize(bytes int64) string {
+	if bytes == 0 {
+		return "0 B"
+	}
+
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+
+	units := []string{"KB", "MB", "GB", "TB"}
+	return fmt.Sprintf("%.1f %s", float64(bytes)/float64(div), units[exp])
+}
+
+// GetModelInfo 获取模型信息
+func (a *App) GetModelInfo(directory string) map[string]interface{} {
+	if directory == "" {
+		return map[string]interface{}{
+			"success": false,
+			"error":   "目录路径为空",
+		}
+	}
+
+	// 检查目录是否存在
+	if _, err := os.Stat(directory); os.IsNotExist(err) {
+		return map[string]interface{}{
+			"success": false,
+			"error":   "目录不存在",
+		}
+	}
+
+	// 扫描模型文件
+	models := a.scanModelFiles(directory)
+
+	return map[string]interface{}{
+		"success":      true,
+		"directory":    directory,
+		"models":       models,
+		"modelCount":   len(models),
+		"hasWhisper":   a.hasWhisperModel(models),
+		"recommendations": a.getRecommendations(models),
+	}
+}
+
+// hasWhisperModel 检查是否有Whisper模型
+func (a *App) hasWhisperModel(models []map[string]interface{}) bool {
+	for _, model := range models {
+		if model["type"] == "whisper" {
+			return true
+		}
+	}
+	return false
+}
+
+// getRecommendations 获取模型推荐
+func (a *App) getRecommendations(models []map[string]interface{}) []string {
+	var recommendations []string
+	hasWhisper := a.hasWhisperModel(models)
+
+	if !hasWhisper {
+		recommendations = append(recommendations, "建议下载Whisper Base模型以开始使用语音识别功能")
+	}
+
+	if len(models) == 0 {
+		recommendations = append(recommendations, "当前目录中没有检测到任何模型文件")
+	}
+
+	if len(recommendations) == 0 {
+		recommendations = append(recommendations, "模型配置正常，可以开始使用语音识别功能")
+	}
+
+	return recommendations
+}
+
 // SelectAudioFile 选择音频文件
 func (a *App) SelectAudioFile() map[string]interface{} {
 	dialogOptions := runtime.OpenDialogOptions{

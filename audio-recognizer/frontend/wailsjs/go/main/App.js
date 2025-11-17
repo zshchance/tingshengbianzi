@@ -10,6 +10,10 @@ export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
 }
 
+export function GetModelInfo(arg1) {
+  return window['go']['main']['App']['GetModelInfo'](arg1);
+}
+
 export function GetRecognitionStatus() {
   return window['go']['main']['App']['GetRecognitionStatus']();
 }
@@ -20,6 +24,10 @@ export function LoadModel(arg1, arg2) {
 
 export function SelectAudioFile() {
   return window['go']['main']['App']['SelectAudioFile']();
+}
+
+export function SelectModelDirectory() {
+  return window['go']['main']['App']['SelectModelDirectory']();
 }
 
 export function StartRecognition(arg1) {

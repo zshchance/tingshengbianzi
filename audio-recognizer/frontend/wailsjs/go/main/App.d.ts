@@ -6,11 +6,15 @@ export function ExportResult(arg1:string,arg2:string,arg3:string):Promise<main.R
 
 export function GetConfig():Promise<string>;
 
+export function GetModelInfo(arg1:string):Promise<Record<string, any>>;
+
 export function GetRecognitionStatus():Promise<Record<string, any>>;
 
 export function LoadModel(arg1:string,arg2:string):Promise<main.RecognitionResponse>;
 
 export function SelectAudioFile():Promise<Record<string, any>>;
+
+export function SelectModelDirectory():Promise<Record<string, any>>;
 
 export function StartRecognition(arg1:main.RecognitionRequest):Promise<main.RecognitionResponse>;
 

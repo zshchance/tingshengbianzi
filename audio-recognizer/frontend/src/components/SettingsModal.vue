@@ -246,8 +246,82 @@
                         class="text-input"
                         placeholder="模型文件路径"
                       >
-                      <button @click="browseModelPath" class="btn btn-small btn-secondary">
-                        浏览
+                      <button
+                        @click="browseModelPath"
+                        class="btn btn-small btn-secondary"
+                        :disabled="modelLoading"
+                      >
+                        {{ modelLoading ? '选择中...' : '浏览' }}
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- 模型信息显示 -->
+                  <div v-if="modelInfo" class="model-info">
+                    <div class="setting-row">
+                      <label>模型状态:</label>
+                      <div class="model-status">
+                        <span
+                          :class="[
+                            'status-badge',
+                            modelInfo.hasWhisper ? 'status-success' : 'status-warning'
+                          ]"
+                        >
+                          {{ modelInfo.hasWhisper ? '✅ 已配置' : '⚠️ 需要配置' }}
+                        </span>
+                        <span class="model-count">
+                          ({{ modelInfo.modelCount }} 个模型)
+                        </span>
+                      </div>
+                    </div>
+
+                    <!-- 模型列表 -->
+                    <div v-if="modelInfo.models && modelInfo.models.length > 0" class="model-list">
+                      <div class="setting-row">
+                        <label>可用模型:</label>
+                      </div>
+                      <div
+                        v-for="model in modelInfo.models"
+                        :key="model.name"
+                        class="model-item"
+                      >
+                        <div class="model-name">{{ model.name }}</div>
+                        <div class="model-details">
+                          <span class="model-type">{{ model.type }}</span>
+                          <span class="model-size">{{ model.sizeStr }}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 推荐信息 -->
+                    <div v-if="modelInfo.recommendations" class="recommendations">
+                      <div class="setting-row">
+                        <label>建议:</label>
+                      </div>
+                      <ul class="recommendation-list">
+                        <li v-for="(rec, index) in modelInfo.recommendations" :key="index">
+                          {{ rec }}
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <!-- 操作按钮 -->
+                  <div class="setting-row">
+                    <label></label>
+                    <div class="model-actions">
+                      <button
+                        @click="checkCurrentModelPath"
+                        class="btn btn-small btn-secondary"
+                        :disabled="modelLoading || !settings.modelPath"
+                      >
+                        {{ modelLoading ? '检查中...' : '检查模型' }}
+                      </button>
+                      <button
+                        @click="openModelDocs"
+                        class="btn btn-small btn-secondary"
+                      >
+                        📖 模型说明
                       </button>
                     </div>
                   </div>
@@ -295,7 +369,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useSettings } from '../composables/useSettings'
 import { useToastStore } from '../stores/toast'
 
@@ -373,14 +447,118 @@ const handleImport = async (event) => {
   }
 }
 
+// 模型相关状态
+const modelInfo = ref(null)
+const modelLoading = ref(false)
+
 const browseModelPath = async () => {
   try {
-    // 这里可以调用Wails的目录选择对话框
-    toastStore.showInfo('功能开发中', '目录选择功能将在后续版本中实现')
+    modelLoading.value = true
+    console.log('🗂️ 开始选择模型文件夹...')
+
+    // 动态导入 useWails 以避免循环依赖
+    const { useWails } = await import('../composables/useWails')
+    const { selectModelDirectory, getModelInfo } = useWails()
+
+    // 选择模型文件夹
+    const selectionResult = await selectModelDirectory()
+    if (selectionResult?.success) {
+      const selectedPath = selectionResult.path
+
+      // 更新设置中的模型路径
+      updateSetting('modelPath', selectedPath)
+
+      // 立即保存设置以确保持久化
+      try {
+        await saveSettings()
+        console.log('✅ 模型路径已保存到配置文件')
+      } catch (saveError) {
+        console.warn('保存模型路径失败:', saveError)
+        toastStore.showWarning('部分保存成功', '模型路径已更新，但配置文件保存失败')
+      }
+
+      // 获取模型信息
+      try {
+        modelInfo.value = await getModelInfo(selectedPath)
+        console.log('📊 模型信息:', modelInfo.value)
+
+        if (modelInfo.value?.success) {
+          const modelCount = modelInfo.value.modelCount || 0
+          toastStore.showSuccess(
+            '模型文件夹选择成功',
+            `已选择文件夹，检测到 ${modelCount} 个模型文件`
+          )
+        }
+      } catch (infoError) {
+        console.warn('获取模型信息失败:', infoError)
+        toastStore.showWarning(
+          '模型文件夹选择成功',
+          '已选择文件夹，但无法获取详细模型信息'
+        )
+      }
+    }
   } catch (error) {
+    console.error('选择模型文件夹失败:', error)
     toastStore.showError('浏览失败', error.message)
+  } finally {
+    modelLoading.value = false
   }
 }
+
+// 检查当前模型路径
+const checkCurrentModelPath = async () => {
+  if (!settings.modelPath) return
+
+  try {
+    modelLoading.value = true
+    console.log('🔍 检查当前模型路径:', settings.modelPath)
+
+    const { useWails } = await import('../composables/useWails')
+    const { getModelInfo } = useWails()
+
+    modelInfo.value = await getModelInfo(settings.modelPath)
+    console.log('📊 当前模型信息:', modelInfo.value)
+  } catch (error) {
+    console.warn('检查模型路径失败:', error)
+    modelInfo.value = null
+  } finally {
+    modelLoading.value = false
+  }
+}
+
+// 打开模型文档
+const openModelDocs = () => {
+  // 在实际应用中，这里可以打开一个本地文档文件或者网页
+  const docsUrl = 'https://github.com/ggerganov/whisper.cpp#model-comparison'
+  window.open(docsUrl, '_blank')
+}
+
+// 在组件挂载时检查当前模型路径
+onMounted(async () => {
+  if (props.visible && settings.modelPath) {
+    console.log('🔍 组件挂载，检查当前模型路径:', settings.modelPath)
+    await checkCurrentModelPath()
+  }
+})
+
+// 监听设置模态框的显示状态
+watch(() => props.visible, async (newVisible) => {
+  if (newVisible && settings.modelPath && !modelInfo.value) {
+    console.log('🔍 设置模态框打开，检查模型路径:', settings.modelPath)
+    await checkCurrentModelPath()
+  }
+})
+
+// 监听模型路径变化
+watch(() => settings.modelPath, async (newPath) => {
+  if (newPath && props.visible) {
+    console.log('🔄 模型路径已更改，重新检查:', newPath)
+    await checkCurrentModelPath()
+  } else {
+    // 路径被清空时清除模型信息
+    modelInfo.value = null
+  }
+})
 </script>
 
 <style scoped>
@@ -646,6 +824,104 @@ const browseModelPath = async () => {
   opacity: 1;
 }
 
+/* 模型信息样式 */
+.model-info {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--bg-tertiary, #f3f4f6);
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #e5e7eb);
+}
+
+.model-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-badge {
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status-success {
+  background: var(--success-bg, #dcfce7);
+  color: var(--success-color, #166534);
+}
+
+.status-warning {
+  background: var(--warning-bg, #fef3c7);
+  color: var(--warning-color, #92400e);
+}
+
+.model-count {
+  color: var(--text-secondary, #6b7280);
+  font-size: 12px;
+}
+
+.model-list {
+  margin-top: 12px;
+}
+
+.model-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  background: var(--card-bg, #ffffff);
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #e5e7eb);
+}
+
+.model-name {
+  font-weight: 500;
+  color: var(--text-primary, #1f2937);
+  font-size: 13px;
+}
+
+.model-details {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.model-type {
+  background: var(--primary-color, #3b82f6);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.model-size {
+  color: var(--text-secondary, #6b7280);
+}
+
+.recommendations {
+  margin-top: 12px;
+}
+
+.recommendation-list {
+  margin: 8px 0 0 0;
+  padding-left: 20px;
+  color: var(--text-secondary, #6b7280);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.recommendation-list li {
+  margin-bottom: 4px;
+}
+
+.model-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 /* 响应式 */
 @media (max-width: 768px) {
   .modal-overlay {
@@ -665,6 +941,21 @@ const browseModelPath = async () => {
 
   .setting-row label {
     min-width: auto;
+  }
+
+  .model-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .model-details {
+    align-self: stretch;
+    justify-content: space-between;
+  }
+
+  .model-actions {
+    flex-direction: column;
   }
 
   .modal-footer {

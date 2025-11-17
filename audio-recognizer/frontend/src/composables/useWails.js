@@ -252,6 +252,63 @@ export function useWails() {
   }
 
   /**
+   * 选择模型文件夹
+   */
+  const selectModelDirectory = async () => {
+    try {
+      isLoading.value = true
+      toastStore.showInfo('选择模型文件夹', '正在打开文件夹选择对话框...')
+
+      const result = await App.SelectModelDirectory()
+      console.log('📁 Wails模型文件夹选择结果:', result)
+
+      if (result && result.success) {
+        toastStore.showSuccess('文件夹选择成功', result.path)
+        return result
+      } else {
+        console.error('📁 模型文件夹选择返回值异常:', result)
+        const errorMsg = result?.error || '文件夹选择失败'
+        throw new Error(errorMsg)
+      }
+
+    } catch (error) {
+      console.error('模型文件夹选择失败:', error)
+      toastStore.showError('文件夹选择失败', error.message)
+      throw error
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  /**
+   * 获取模型信息
+   */
+  const getModelInfo = async (directory) => {
+    try {
+      isLoading.value = true
+      console.log('🔍 获取模型信息:', directory)
+
+      const result = await App.GetModelInfo(directory)
+      console.log('📊 模型信息结果:', result)
+
+      if (result && result.success) {
+        return result
+      } else {
+        console.error('📊 获取模型信息失败:', result)
+        const errorMsg = result?.error || '获取模型信息失败'
+        throw new Error(errorMsg)
+      }
+
+    } catch (error) {
+      console.error('获取模型信息失败:', error)
+      toastStore.showError('获取模型信息失败', error.message)
+      throw error
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  /**
    * 导出识别结果
    */
   const exportResult = async (result, format, outputPath) => {
@@ -314,6 +371,8 @@ export function useWails() {
 
     // 方法
     selectAudioFile,
+    selectModelDirectory,
+    getModelInfo,
     startRecognition,
     stopRecognition,
     loadModel,
