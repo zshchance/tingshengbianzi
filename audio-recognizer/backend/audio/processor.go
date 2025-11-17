@@ -186,6 +186,11 @@ func (p *Processor) getAudioDuration(filePath string) (float64, error) {
 	return duration, nil
 }
 
+// GetAudioDuration 公开的音频时长获取方法
+func (p *Processor) GetAudioDuration(filePath string) (float64, error) {
+	return p.getAudioDuration(filePath)
+}
+
 // ReadWAVData 读取WAV文件音频数据
 func (p *Processor) ReadWAVData(filePath string) ([]int16, error) {
 	file, err := os.Open(filePath)

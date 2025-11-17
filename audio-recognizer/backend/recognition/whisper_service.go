@@ -2,6 +2,7 @@ package recognition
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -359,7 +360,7 @@ func (s *WhisperService) parseWhisperOutput(srtFile string, audioInfo *models.Au
 		}
 	}
 
-	result.Text = s.addTimestampsToText(fullText.String(), wordSegments)
+	result.Text = s.addTimestampsToText(fullText.String(), wordSegments, audioInfo.Duration)
 	result.Words = wordSegments
 	result.Segments = segments
 
@@ -396,15 +397,15 @@ func (s *WhisperService) parseSRTPair(timestampLine string) (float64, float64) {
 }
 
 // addTimestampsToText 在文本中添加时间戳标记
-func (s *WhisperService) addTimestampsToText(text string, words []models.Word) string {
+func (s *WhisperService) addTimestampsToText(text string, words []models.Word, audioDuration float64) string {
 	if len(words) == 0 {
 		return text
 	}
 
 	var result strings.Builder
 
-	// 使用更精细的时间标记分割逻辑
-	timeMarks := s.generateFineTimeMarks(words)
+	// 使用更精细的时间标记分割逻辑，传入音频时长作为限制
+	timeMarks := s.generateFineTimeMarks(words, audioDuration)
 
 	for i, mark := range timeMarks {
 		if i > 0 {
@@ -420,45 +421,69 @@ func (s *WhisperService) addTimestampsToText(text string, words []models.Word) s
 }
 
 // generateFineTimeMarks 生成更精细的时间标记
-func (s *WhisperService) generateFineTimeMarks(words []models.Word) []TimeMark {
+func (s *WhisperService) generateFineTimeMarks(words []models.Word, maxDuration float64) []TimeMark {
 	var timeMarks []TimeMark
+	currentTime := 0.0
 
 	for _, word := range words {
+		// 跳过空白词
+		if strings.TrimSpace(word.Text) == "" {
+			continue
+		}
+
 		// 按标点符号和自然停顿分割文本
 		subSegments := s.splitTextByNaturalPauses(word.Text)
-		if len(subSegments) > 1 {
-			// 计算每个子片段的时间分配
-			totalDuration := word.End - word.Start
-			totalChars := s.countTotalChars(subSegments)
 
-			currentTime := word.Start
-			for _, segment := range subSegments {
-				if segment.Text == "" {
-					continue
-				}
-
-				// 按字符比例分配时间
-				charRatio := float64(len(segment.Text)) / float64(totalChars)
-				segmentDuration := totalDuration * charRatio
-				segmentEndTime := currentTime + segmentDuration
-
-				timeMark := TimeMark{
-					StartTime: currentTime,
-					EndTime:   segmentEndTime,
-					Text:      segment.Text,
-				}
-				timeMarks = append(timeMarks, timeMark)
-
-				currentTime = segmentEndTime
+		// 为每个子片段分配时间
+		for _, segment := range subSegments {
+			if strings.TrimSpace(segment.Text) == "" {
+				continue
 			}
-		} else {
-			// 单个片段，直接添加
+
+			// 计算片段时长：基于文本长度，但限制在合理范围内
+			textLen := len([]rune(segment.Text))
+			baseDuration := float64(textLen) * 0.3 // 每个字符约0.3秒
+			maxSegmentDuration := 8.0 // 单个片段最长8秒
+			minSegmentDuration := 0.5 // 单个片段最短0.5秒
+
+			segmentDuration := baseDuration
+			if segmentDuration > maxSegmentDuration {
+				segmentDuration = maxSegmentDuration
+			}
+			if segmentDuration < minSegmentDuration && textLen > 1 {
+				segmentDuration = minSegmentDuration
+			}
+
+			segmentStartTime := currentTime
+			segmentEndTime := currentTime + segmentDuration
+
+			// 确保不超过最大时长
+			if segmentStartTime >= maxDuration {
+				break // 如果已经开始超过最大时长，停止添加
+			}
+			if segmentEndTime > maxDuration {
+				segmentEndTime = maxDuration
+			}
+
 			timeMark := TimeMark{
-				StartTime: word.Start,
-				EndTime:   word.End,
-				Text:      word.Text,
+				StartTime: segmentStartTime,
+				EndTime:   segmentEndTime,
+				Text:      strings.TrimSpace(segment.Text),
 			}
 			timeMarks = append(timeMarks, timeMark)
+
+			currentTime = segmentEndTime
+			if currentTime >= maxDuration {
+				break
+			}
+		}
+
+		// 添加词语间的停顿时间
+		pauseTime := 0.2 + rand.Float64()*0.3 // 0.2-0.5秒的停顿
+		currentTime += pauseTime
+
+		if currentTime >= maxDuration {
+			break
 		}
 	}
 
@@ -472,19 +497,19 @@ type TimeMark struct {
 	Text      string
 }
 
-// splitTextByNaturalPauses 按自然停顿分割文本（包括标点符号）
+// splitTextByNaturalPauses 按自然停顿分割文本（但不让标点符号独立成行）
 func (s *WhisperService) splitTextByNaturalPauses(text string) []TextSegment {
 	var segments []TextSegment
-	current := strings.Builder{}
+	var current strings.Builder
 	charCount := 0
 
 	for i, char := range text {
 		current.WriteRune(char)
 		charCount++
 
-		// 检测自然停顿点
-		if s.isPauseChar(char, i, text) {
-			// 保存当前片段
+		// 检测是否为强停顿符号（分割点）
+		if s.isStrongPauseChar(char) {
+			// 保存当前片段（包含这个停顿符号）
 			if current.Len() > 0 {
 				segments = append(segments, TextSegment{
 					Text:      strings.TrimSpace(current.String()),
@@ -493,13 +518,15 @@ func (s *WhisperService) splitTextByNaturalPauses(text string) []TextSegment {
 				current.Reset()
 				charCount = 0
 			}
-
-			// 标点符号也作为独立片段
-			if s.isPunctuation(char) {
+		} else if s.isPhraseBoundary(text, i) && current.Len() > 5 {
+			// 在短语边界分割，但不分割太短的片段
+			if current.Len() > 0 {
 				segments = append(segments, TextSegment{
-					Text:      string(char),
-					CharCount: 1,
+					Text:      strings.TrimSpace(current.String()),
+					CharCount: charCount,
 				})
+				current.Reset()
+				charCount = 0
 			}
 		}
 	}
@@ -521,29 +548,17 @@ type TextSegment struct {
 	CharCount int
 }
 
-// isPauseChar 判断是否为停顿字符
-func (s *WhisperService) isPauseChar(char rune, pos int, text string) bool {
-	// 中文标点符号
-	if char == '，' || char == '。' || char == '！' || char == '？' ||
-	   char == '；' || char == '：' || char == '、' || char == '…' {
-		return true
-	}
+// isStrongPauseChar 判断是否为强停顿字符（应该在此处分割）
+func (s *WhisperService) isStrongPauseChar(char rune) bool {
+	// 强停顿符号：句号、问号、感叹号、分号、冒号等
+	return char == '。' || char == '！' || char == '？' || char == '；' || char == '：' ||
+		   char == '.' || char == '!' || char == '?' || char == ';' || char == ':' ||
+		   char == '…'
+}
 
-	// 英文标点符号
-	if char == ',' || char == '.' || char == '!' || char == '?' ||
-	   char == ';' || char == ':' || char == '-' || char == '"' || char == '\'' {
-		return true
-	}
-
-	// 短语停顿（基于上下文判断）
-	if pos > 3 && pos < len(text)-3 {
-		// 检查是否为短语边界（如"然后"、"但是"等连词后）
-		if s.isPhraseBoundary(text, pos) {
-			return true
-		}
-	}
-
-	return false
+// isWeakPauseChar 判断是否为弱停顿字符（逗号等，但不独立分割）
+func (s *WhisperService) isWeakPauseChar(char rune) bool {
+	return char == '，' || char == '、' || char == ',' || char == '-'
 }
 
 // isPunctuation 判断是否为标点符号

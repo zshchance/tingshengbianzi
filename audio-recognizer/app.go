@@ -13,6 +13,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"audio-recognizer/backend/models"
 	"audio-recognizer/backend/recognition"
+	"audio-recognizer/backend/audio"
 )
 
 // App struct
@@ -381,6 +382,30 @@ func (a *App) SelectAudioFile() map[string]interface{} {
 		mimeType = "audio/" + ext[1:]
 	}
 
+	// 尝试获取音频时长
+	var duration float64
+	processor, err := audio.NewProcessor()
+	if err != nil {
+		fmt.Printf("创建音频处理器失败: %v\n", err)
+		// 如果无法创建处理器，使用文件大小估算时长
+		duration = a.estimateDurationFromSize(fileInfo.Size(), ext)
+		fmt.Printf("使用估算时长: %.2f 秒\n", duration)
+	} else {
+		defer processor.Cleanup()
+
+		// 使用音频处理器获取时长
+		audioDuration, err := processor.GetAudioDuration(selectedFile)
+		if err != nil {
+			fmt.Printf("获取音频时长失败: %v\n", err)
+			// 回退到估算
+			duration = a.estimateDurationFromSize(fileInfo.Size(), ext)
+			fmt.Printf("回退使用估算时长: %.2f 秒\n", duration)
+		} else {
+			duration = audioDuration
+			fmt.Printf("成功获取音频时长: %.2f 秒\n", duration)
+		}
+	}
+
 	return map[string]interface{}{
 		"success": true,
 		"file": map[string]interface{}{
@@ -388,6 +413,7 @@ func (a *App) SelectAudioFile() map[string]interface{} {
 			"path":         selectedFile,
 			"size":         fileInfo.Size(),
 			"type":         mimeType,
+			"duration":     duration,
 			"lastModified": fileInfo.ModTime().UnixMilli(),
 		},
 	}
@@ -502,6 +528,39 @@ func (a *App) exportToVTT(result models.RecognitionResult) string {
 	}
 
 	return vtt.String()
+}
+
+// estimateDurationFromSize 根据文件大小估算音频时长
+func (a *App) estimateDurationFromSize(fileSize int64, ext string) float64 {
+	// 根据不同格式设置平均比特率（kbps）
+	var bitRate int
+	switch ext {
+	case ".mp3":
+		bitRate = 128
+	case ".wav":
+		bitRate = 1411 // CD质量
+	case ".m4a", ".aac":
+		bitRate = 128
+	case ".flac":
+		bitRate = 1000 // 无损压缩
+	case ".ogg":
+		bitRate = 160
+	default:
+		bitRate = 128 // 默认
+	}
+
+	// 计算时长（秒）
+	bytesPerSecond := float64(bitRate*1000) / 8 // 转换为字节/秒
+	estimatedDuration := float64(fileSize) / bytesPerSecond
+
+	// 设置合理的范围限制
+	if estimatedDuration < 1 {
+		estimatedDuration = 1 // 最少1秒
+	} else if estimatedDuration > 7200 {
+		estimatedDuration = 7200 // 最多2小时
+	}
+
+	return estimatedDuration
 }
 
 // sendProgressEvent 发送进度事件

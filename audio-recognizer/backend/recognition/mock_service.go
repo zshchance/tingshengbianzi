@@ -128,7 +128,8 @@ func (s *MockService) RecognizeFile(audioPath string, language string, progressC
 		// 组合成短句，添加标点符号
 		segmentText := strings.Join(segmentWords, "")
 		if rand.Float32() < 0.6 { // 60%概率添加标点符号
-			punctuations := []string{"，", "。", "！", "？"}
+			// 优先使用句号等强停顿符号，避免过多逗号
+			punctuations := []string{"。", "。", "。", "！", "？", "，"}
 			segmentText += punctuations[rand.Intn(len(punctuations))]
 		}
 
@@ -161,8 +162,13 @@ func (s *MockService) RecognizeFile(audioPath string, language string, progressC
 			})
 		}
 
-		// 添加停顿时间（0.2-0.8秒）
-		currentTime = endTime + 0.2 + rand.Float64()*0.6
+		// 添加停顿时间（0.2-0.5秒）
+		currentTime = endTime + 0.2 + rand.Float64()*0.3
+
+		// 确保不超过总时长
+		if currentTime >= totalDuration {
+			break
+		}
 
 		// 模拟处理时间
 		time.Sleep(30 * time.Millisecond)
