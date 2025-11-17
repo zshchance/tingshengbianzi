@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"audio-recognizer/backend/models"
 	"audio-recognizer/backend/recognition"
 )
@@ -183,7 +184,7 @@ func (a *App) performRecognition(request RecognitionRequest, language string) {
 	}()
 
 	// 发送进度事件
-	a.sendProgressEvent("progress", &models.RecognitionProgress{
+	a.sendProgressEvent("recognition_progress", &models.RecognitionProgress{
 		Status:     "正在准备音频文件...",
 		Percentage: 0,
 	})
@@ -193,13 +194,13 @@ func (a *App) performRecognition(request RecognitionRequest, language string) {
 		request.FilePath,
 		language,
 		func(progress *models.RecognitionProgress) {
-			a.sendProgressEvent("progress", progress)
+			a.sendProgressEvent("recognition_progress", progress)
 		},
 	)
 
 	if err != nil {
-		a.sendProgressEvent("error", nil)
-		a.sendProgressEvent("complete", RecognitionResponse{
+		a.sendProgressEvent("recognition_error", models.NewRecognitionError(models.ErrorCodeRecognitionFailed, "语音识别失败", err.Error()))
+		a.sendProgressEvent("recognition_complete", RecognitionResponse{
 			Success: false,
 			Error:   models.NewRecognitionError(models.ErrorCodeRecognitionFailed, "语音识别失败", err.Error()),
 		})
@@ -207,7 +208,8 @@ func (a *App) performRecognition(request RecognitionRequest, language string) {
 	}
 
 	// 发送完成事件
-	a.sendProgressEvent("complete", RecognitionResponse{
+	a.sendProgressEvent("recognition_result", result)
+	a.sendProgressEvent("recognition_complete", RecognitionResponse{
 		Success: true,
 		Result:  result,
 	})
@@ -434,9 +436,9 @@ func (a *App) exportToVTT(result models.RecognitionResult) string {
 	return vtt.String()
 }
 
-// sendProgressEvent 发送进度事件（需要Wails运行时支持）
+// sendProgressEvent 发送进度事件
 func (a *App) sendProgressEvent(eventType string, data interface{}) {
-	// 这里需要使用Wails的EventsEmit功能
-	// 暂时简化实现
-	fmt.Printf("Progress Event: %s, Data: %v\n", eventType, data)
+	if a.ctx != nil {
+		runtime.EventsEmit(a.ctx, eventType, data)
+	}
 }

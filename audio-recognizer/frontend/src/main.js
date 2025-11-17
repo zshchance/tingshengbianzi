@@ -3,6 +3,7 @@ import './app.css';
 
 // 导入Wails运行时
 import {EventsOn} from '../wailsjs/runtime/runtime';
+import {StartRecognition, StopRecognition, GetRecognitionStatus, LoadModel} from '../wailsjs/go/main/App.js';
 
 // 应用状态管理
 class AudioRecognizerApp {
@@ -107,11 +108,13 @@ class AudioRecognizerApp {
     // 加载默认设置
     async loadDefaultSettings() {
         try {
-            // 这里将来可以调用后端API加载保存的设置
-            this.updateModelStatus();
+            // 检查后端服务状态
+            const status = await GetRecognitionStatus();
+            this.updateModelStatus(status);
             this.showToast('应用初始化完成', 'success');
         } catch (error) {
             console.error('加载设置失败:', error);
+            this.showToast('服务连接失败', 'error');
         }
     }
 
@@ -149,14 +152,29 @@ class AudioRecognizerApp {
 
     // 处理音频文件
     async processAudioFile(file) {
+        console.log('处理音频文件:', file);
+
         try {
             // 验证文件类型
             if (!file.type.startsWith('audio/')) {
+                console.log('文件类型验证失败:', file.type);
                 this.showToast('请选择有效的音频文件', 'error');
                 return;
             }
 
-            this.currentFile = file;
+            console.log('文件类型验证通过:', file.type);
+
+            // 存储文件信息
+            this.currentFile = {
+                name: file.name,
+                size: file.size,
+                type: file.type,
+                lastModified: file.lastModified,
+                path: file.path || file.name // 对于拖拽的文件，Wails会提供真实路径
+            };
+
+            console.log('文件信息已存储:', this.currentFile);
+
             this.displayFileInfo(file);
             this.enableStartButton();
             this.showToast(`已选择文件: ${file.name}`, 'success');
@@ -233,7 +251,12 @@ class AudioRecognizerApp {
     // 启用开始按钮
     enableStartButton() {
         const startBtn = document.getElementById('startBtn');
-        startBtn.disabled = false;
+        if (startBtn) {
+            console.log('启用开始识别按钮');
+            startBtn.disabled = false;
+        } else {
+            console.error('找不到开始按钮元素');
+        }
     }
 
     // 禁用开始按钮
@@ -254,15 +277,28 @@ class AudioRecognizerApp {
             this.disableControls();
             this.updateStatus('正在识别...');
 
-            // 这里将来调用后端识别API
-            // await this.backend.startRecognition(this.currentFile, this.getRecognitionOptions());
+            // 调用真实的后端识别API
+            const recognitionRequest = {
+                filePath: this.currentFile.path || this.currentFile.name,
+                language: this.appSettings.language,
+                options: this.getRecognitionOptions()
+            };
 
-            // 模拟识别过程
-            this.simulateRecognition();
+            const result = await StartRecognition(recognitionRequest);
+
+            if (result.success) {
+                this.showToast('语音识别已开始', 'success');
+            } else {
+                throw new Error(result.error?.message || '启动语音识别失败');
+            }
 
         } catch (error) {
             console.error('开始识别失败:', error);
-            this.handleRecognitionError(error);
+            this.isRecognizing = false;
+            this.hideProgress();
+            this.enableControls();
+            this.updateStatus('识别失败');
+            this.showToast(`识别失败: ${error.message || error}`, 'error');
         }
     }
 
@@ -273,20 +309,24 @@ class AudioRecognizerApp {
         }
 
         try {
-            this.isRecognizing = false;
             this.updateStatus('正在停止...');
-            this.hideProgress();
-            this.enableControls();
 
-            // 这里将来调用后端停止API
-            // await this.backend.stopRecognition();
+            const result = await StopRecognition();
 
-            this.showToast('识别已停止', 'info');
-            this.updateStatus('就绪');
+            if (result.success) {
+                this.showToast('识别已停止', 'info');
+            } else {
+                this.showToast(`停止失败: ${result.error?.message || '未知错误'}`, 'error');
+            }
 
         } catch (error) {
             console.error('停止识别失败:', error);
-            this.showToast('停止识别失败', 'error');
+            this.showToast(`停止失败: ${error.message || error}`, 'error');
+        } finally {
+            this.isRecognizing = false;
+            this.hideProgress();
+            this.enableControls();
+            this.updateStatus('就绪');
         }
     }
 
@@ -311,28 +351,7 @@ class AudioRecognizerApp {
         this.showToast('应用已重置', 'info');
     }
 
-    // 模拟识别过程（临时，实际会调用后端）
-    simulateRecognition() {
-        let progress = 0;
-        const interval = setInterval(() => {
-            if (!this.isRecognizing || progress >= 100) {
-                clearInterval(interval);
-                if (progress >= 100) {
-                    this.handleRecognitionComplete();
-                }
-                return;
-            }
-
-            progress += Math.random() * 10;
-            progress = Math.min(progress, 100);
-            this.updateProgress({
-                percent: Math.round(progress),
-                currentTime: progress * this.currentFile.size / 100,
-                totalTime: this.currentFile.size,
-                status: '正在识别中...'
-            });
-        }, 500);
-    }
+    // 模拟识别过程已移除，现在使用真实的后端识别
 
     // 更新进度
     updateProgress(progress) {
@@ -601,9 +620,23 @@ ${result.text}
     }
 
     // 更新模型状态
-    updateModelStatus() {
+    updateModelStatus(status = null) {
         const modelStatus = document.getElementById('modelStatus');
-        modelStatus.textContent = `模型: ${this.appSettings.language}`;
+
+        if (status) {
+            const serviceReady = status.serviceReady || false;
+            const isRecognizing = status.isRecognizing || false;
+            const supportedLanguages = status.supportedLanguages || [];
+
+            let statusText = `模型: ${serviceReady ? '已加载' : '未加载'}`;
+            if (isRecognizing) {
+                statusText += ' (识别中)';
+            }
+
+            modelStatus.textContent = statusText;
+        } else {
+            modelStatus.textContent = `模型: ${this.appSettings.language}`;
+        }
     }
 
     // 更新UI
