@@ -522,7 +522,8 @@ export class UIController {
         }
 
               // 检查是否为纯文本格式（包含时间戳的文本）
-        if (tab === 'original' && content.includes('[') && content.includes(']') && this.containsTimestamps(content)) {
+        if ((tab === 'original' && content.includes('[') && content.includes(']') && this.containsTimestamps(content)) ||
+            (tab === 'subtitle' && content.includes('-->'))) {
             // 纯文本显示，保持原始格式
             resultDisplay.style.whiteSpace = 'pre-wrap';
             resultDisplay.style.fontFamily = 'monospace';
@@ -916,46 +917,184 @@ ${result.text}
      * @returns {string} 字幕格式文本
      */
     generateSubtitleFormat(result) {
-        if (!result || !result.words || !Array.isArray(result.words)) {
-            return result.text || '';
+        if (!result) return '';
+
+        // 如果结果文本已经包含时间戳，转换为字幕格式
+        if (result.text && this.containsTimestamps(result.text)) {
+            return this.formatTimestampsToSubtitle(result.text);
         }
 
-        // 生成SRT格式字幕
-        let srtContent = '';
-        result.words.forEach((word, index) => {
-            const wordText = word.text || word.word;
-            if (wordText && ((word.start !== undefined && word.end !== undefined) ||
-                           (word.startTime !== undefined && word.endTime !== undefined))) {
+        // 如果有words数组，生成字幕格式
+        if (result.words && Array.isArray(result.words) && result.words.length > 0) {
+            return this.generateWordsSubtitleFormat(result.words);
+        }
 
-                const startTime = word.start !== undefined ? word.start : word.startTime;
-                const endTime = word.end !== undefined ? word.end : word.endTime;
+        // 否则返回普通文本
+        return result.text || '';
+    }
+
+    /**
+     * 将带时间戳的文本转换为字幕格式
+     * @param {string} text - 包含时间戳的文本
+     * @returns {string} 字幕格式文本
+     */
+    formatTimestampsToSubtitle(text) {
+        // 首先将现有的时间戳格式统一处理
+        const lines = text.split('\n');
+        const segments = [];
+
+        lines.forEach(line => {
+            const trimmedLine = line.trim();
+            if (!trimmedLine) return;
+
+            // 匹配时间戳格式
+            const timestampMatch = trimmedLine.match(/(\d{2}:\d{2}:\d{2}\.\d{3})\s*(.*)/);
+            if (timestampMatch) {
+                const [, timestamp, content] = timestampMatch;
+                if (content && content.trim()) {
+                    segments.push({
+                        time: parseFloat(timestamp),
+                        text: content.trim()
+                    });
+                }
+            }
+        });
+
+        // 如果没有时间戳，按行分割
+        if (segments.length === 0) {
+            return text;
+        }
+
+        // 将segments按时间分组（每3-5秒一组）
+        const subtitleSegments = this.groupSegmentsByTime(segments, 4.0);
+        const subtitleLines = [];
+
+        subtitleSegments.forEach((segment, index) => {
+            if (segment.length === 0) return;
+
+            const startTime = this.formatSRTTime(segment[0].time);
+            const endTime = this.formatSRTTime(segment[segment.length - 1].time);
+            const segmentText = segment.map(s => s.text).join(' ');
+
+            subtitleLines.push(`${startTime} --> ${endTime}`);
+            subtitleLines.push(segmentText);
+            if (index < subtitleSegments.length - 1) {
+                subtitleLines.push(''); // 最后一个不加空行
+            }
+        });
+
+        return subtitleLines.join('\n').trim();
+    }
+
+    /**
+     * 按时间将文本段落分组
+     * @param {Array} segments - 文本段落数组
+     * @param {number} duration - 每组时长（秒）
+     * @returns {Array} 分组后的段落数组
+     */
+    groupSegmentsByTime(segments, duration = 4.0) {
+        if (!segments || segments.length === 0) return [];
+
+        const groups = [];
+        let currentGroup = [];
+        let groupStartTime = null;
+
+        segments.forEach(segment => {
+            if (groupStartTime === null) {
+                groupStartTime = segment.time;
+            }
+
+            // 如果当前段落与组开始时间超过指定时长，开始新组
+            if (segment.time - groupStartTime >= duration) {
+                if (currentGroup.length > 0) {
+                    groups.push(currentGroup);
+                    currentGroup = [];
+                }
+                groupStartTime = segment.time;
+            }
+
+            currentGroup.push(segment);
+        });
+
+        // 添加最后一个组
+        if (currentGroup.length > 0) {
+            groups.push(currentGroup);
+        }
+
+        return groups;
+    }
+
+    /**
+     * 从words数组生成字幕格式
+     * @param {Array} words - 词汇数组
+     * @returns {string} 字幕格式文本
+     */
+    generateWordsSubtitleFormat(words) {
+        const subtitleLines = [];
+
+        // 将词汇按时间分组，每2-3秒一组作为一个字幕段落
+        const segments = this.groupWordsByTime(words, 3.0); // 每3秒一组
+
+        segments.forEach(segment => {
+            if (segment.length > 0) {
+                const startTime = segment[0].start !== undefined ? segment[0].start : segment[0].startTime;
+                const endTime = segment[segment.length - 1].end !== undefined ? segment[segment.length - 1].end : segment[segment.length - 1].endTime;
 
                 const srtStartTime = this.formatSRTTime(startTime);
                 const srtEndTime = this.formatSRTTime(endTime);
 
-                srtContent += `${index + 1}\n`;
-                srtContent += `${srtStartTime} --> ${srtEndTime}\n`;
-                srtContent += `${wordText}\n\n`;
+                // 组合该段落的所有文本
+                const segmentText = segment.map(word => word.text || word.word).join(' ');
+
+                if (segmentText.trim()) {
+                    subtitleLines.push(`${srtStartTime} --> ${srtEndTime}`);
+                    subtitleLines.push(segmentText.trim());
+                    subtitleLines.push(''); // 空行分隔
+                }
             }
         });
 
-        // 如果没有SRT内容，返回带时间戳的文本
-        if (!srtContent && result.text) {
-            // 如果文本包含时间戳，直接返回
-            if (this.containsTimestamps(result.text)) {
-                return result.text;
+        return subtitleLines.join('\n').trim();
+    }
+
+    /**
+     * 按时间将词汇分组
+     * @param {Array} words - 词汇数组
+     * @param {number} duration - 每组时长（秒）
+     * @returns {Array} 分组后的词汇数组
+     */
+    groupWordsByTime(words, duration = 3.0) {
+        if (!words || words.length === 0) return [];
+
+        const segments = [];
+        let currentSegment = [];
+        let segmentStartTime = null;
+
+        words.forEach(word => {
+            const startTime = word.start !== undefined ? word.start : word.startTime;
+
+            if (segmentStartTime === null) {
+                segmentStartTime = startTime;
             }
 
-            // 否则生成简单的字幕格式
-            const words = result.text.split(' ');
-            words.forEach((word, index) => {
-                srtContent += `${index + 1}\n`;
-                srtContent += `00:00:00,000 --> 00:00:02,000\n`;
-                srtContent += `${word}\n\n`;
-            });
+            // 如果当前词汇与段落开始时间超过指定时长，开始新段落
+            if (startTime - segmentStartTime >= duration) {
+                if (currentSegment.length > 0) {
+                    segments.push(currentSegment);
+                    currentSegment = [];
+                }
+                segmentStartTime = startTime;
+            }
+
+            currentSegment.push(word);
+        });
+
+        // 添加最后一个段落
+        if (currentSegment.length > 0) {
+            segments.push(currentSegment);
         }
 
-        return srtContent.trim() || result.text || '';
+        return segments;
     }
 
     /**
