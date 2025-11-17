@@ -65,11 +65,7 @@
             <button @click="resetApplication" class="btn btn-secondary btn-large">
               🔄 重置
             </button>
-            <!-- 日志下载按钮 -->
-            <button @click="downloadLogs" class="btn btn-small btn-info" title="下载识别日志">
-              📄 下载日志
-            </button>
-          </div>
+              </div>
         </section>
 
         <!-- 识别结果显示 -->
@@ -113,7 +109,7 @@ import { useSettings } from './composables/useSettings'
 import { generateFineGrainedTimestampedText } from './utils/timeFormatter'
 import { generateFineGrainedTimestampedText as generateEnhancedTimestamps, optimizeSpeedAnalysis, intelligentDeduplication } from './utils/fineGrainedTimestamps'
 import { generateAIOptimizationPrompt, preprocessText, generateTextQualityReport } from './utils/aiOptimizer'
-import RecognitionLogger from './utils/recognitionLogger'
+// 日志功能已移除 - 使用浏览器控制台进行调试
 import { EventsOn } from '../wailsjs/runtime/runtime.js'
 import ToastContainer from './components/ToastContainer.vue'
 import ProgressBar from './components/ProgressBar.vue'
@@ -344,7 +340,7 @@ const startRecognition = async () => {
     console.log('🎯 调用wailsStartRecognition，请求:', recognitionRequest)
 
     // 记录识别开始日志
-    await RecognitionLogger.logRecognitionStart(recognitionRequest)
+    console.log('🎤 开始语音识别:', recognitionRequest)
 
     console.log('🎯 开始调用Wails API...')
     try {
@@ -386,21 +382,6 @@ const stopRecognition = async () => {
   }
 }
 
-// 下载日志
-const downloadLogs = () => {
-  try {
-    // 显示可用日志文件
-    RecognitionLogger.listAvailableLogs()
-
-    // 自动下载今日日志
-    RecognitionLogger.downloadTodayLog()
-
-    toastStore.showSuccess('日志下载', '日志文件已开始下载')
-  } catch (error) {
-    console.error('下载日志失败:', error)
-    toastStore.showError('下载失败', error.message)
-  }
-}
 
 // 添加浏览器拖拽支持（作为Wails原生拖拽的补充）
 const setupBrowserDragDrop = () => {
@@ -881,23 +862,16 @@ const setupGlobalWailsEvents = () => {
       timestamp: new Date().toISOString()
     }
 
-    // 记录完整的Whisper响应到日志
-    await RecognitionLogger.logToFile('whisper', 'complete_response', completeWhisperResponse)
+    // 记录完整的Whisper响应到控制台
+    console.log('📊 Whisper完整响应:', completeWhisperResponse)
 
     // 记录原始识别响应（保持兼容性）
-    await RecognitionLogger.logRawRecognitionResponse(response)
+    console.log('📋 原始识别响应:', response)
 
     if (response.success && response.result) {
-      // 记录详细的segments信息
-      if (response.result.segments) {
-        await RecognitionLogger.logDetailedSegments(response.result.segments)
-      }
-
       // 🔧 智能去重处理 - 针对长音频重复识别问题
-      let originalSegmentsCount = 0
-      let deduplicatedSegmentsCount = 0
       if (response.result.segments && response.result.segments.length > 0) {
-        originalSegmentsCount = response.result.segments.length
+        const originalSegmentsCount = response.result.segments.length
 
         // 应用智能去重算法
         const deduplicatedSegments = intelligentDeduplication(response.result.segments, {
@@ -908,26 +882,10 @@ const setupGlobalWailsEvents = () => {
           enableSemanticAnalysis: false // 暂不启用语义分析
         })
 
-        deduplicatedSegmentsCount = deduplicatedSegments.length
-
         // 替换原始segments为去重后的结果
         response.result.segments = deduplicatedSegments
 
-        // 记录去重过程到日志
-        await RecognitionLogger.logToFile('deduplication', 'intelligent_deduplication', {
-          originalSegmentCount: originalSegmentsCount,
-          deduplicatedSegmentCount: deduplicatedSegmentsCount,
-          removedDuplicates: originalSegmentsCount - deduplicatedSegmentsCount,
-          deduplicationRate: ((originalSegmentsCount - deduplicatedSegmentsCount) / originalSegmentsCount * 100).toFixed(2) + '%',
-          config: {
-            similarityThreshold: 0.85,
-            timeOverlapThreshold: 0.3,
-            minLength: 3,
-            enableTimeAnalysis: true
-          }
-        })
-
-        console.log(`🧠 智能去重完成: ${originalSegmentsCount} → ${deduplicatedSegmentsCount} (去除 ${originalSegmentsCount - deduplicatedSegmentsCount} 个重复片段)`)
+        console.log(`🧠 智能去重完成: ${originalSegmentsCount} → ${deduplicatedSegments.length} (去除 ${originalSegmentsCount - deduplicatedSegments.length} 个重复片段)`)
       }
 
       // 修复：从去重后的segments生成text字段
@@ -973,20 +931,13 @@ const setupGlobalWailsEvents = () => {
           preview: response.result.timestampedText?.substring(0, 100) || '无内容'
         })
 
-        // 记录细颗粒度处理过程
-        await RecognitionLogger.logFineGrainedProcessing(
-          response.result.segments,
-          {
-            minSegmentLength: 6,
-            maxSegmentLength: 15,
-            averageSpeed: optimizeSpeedAnalysis(
-              response.result.segments.map(s => s.text).join(' '),
-              totalDuration,
-              language
-            )
-          },
-          response.result.timestampedText
-        )
+        // 记录细颗粒度处理过程到控制台
+        console.log('⏱️ 细颗粒度处理完成:', {
+          segmentCount: response.result.segments.length,
+          totalDuration,
+          language,
+          preview: response.result.timestampedText?.substring(0, 100)
+        })
       } else {
         console.warn('⚠️ 没有segments数据，无法生成细颗粒度时间戳')
       }
@@ -1010,13 +961,11 @@ const setupGlobalWailsEvents = () => {
           })
           console.log('💡 AI优化提示词生成完成，长度:', aiPrompt.length)
 
-          // 记录AI优化过程
-          await RecognitionLogger.logAIOptimization(response.result.timestampedText, aiPrompt, {
-            includeBasicOptimization: true,
-            includeMarkerProcessing: true,
-            includeContentOptimization: true,
-            preserveTimestamps: true,
-            customRequirements: '请特别注意保持时间戳的完整性，这是字幕制作的关键信息。'
+          // 记录AI优化过程到控制台
+          console.log('🤖 AI优化完成:', {
+            originalTextLength: response.result.timestampedText?.length || 0,
+            aiPromptLength: aiPrompt.length,
+            preview: aiPrompt.substring(0, 100) + '...'
           })
 
           // 生成文本质量报告
@@ -1044,8 +993,13 @@ const setupGlobalWailsEvents = () => {
       progressData.status = '识别完成！'
       toastStore.showSuccess('识别完成', '音频识别已成功完成')
 
-      // 记录识别完成日志
-      await RecognitionLogger.logRecognitionComplete(response.result)
+      // 记录识别完成到控制台
+      console.log('🎉 识别完成:', {
+        textLength: response.result.text?.length || 0,
+        segmentCount: response.result.segments?.length || 0,
+        duration: response.result.duration,
+        language: response.result.language
+      })
 
       // 2秒后隐藏进度条
       setTimeout(() => {

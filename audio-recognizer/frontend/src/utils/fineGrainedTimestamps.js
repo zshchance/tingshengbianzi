@@ -488,10 +488,8 @@ export function generateFineGrainedTimestampedText(segments, options = {}) {
     processingOptions: options
   }
 
-  // 记录Whisper原始数据到日志
-  if (window.RecognitionLogger) {
-    window.RecognitionLogger.logToFile('whisper', 'raw_segments_data', whisperRawData)
-  }
+  // 日志功能已移除 - 直接输出到浏览器控制台
+  console.log('🎯 Whisper原始数据:', whisperRawData)
 
   const textLines = []
   console.log('📝 开始处理segments数量:', segments.length)

@@ -63,171 +63,40 @@ function sanitizeData(data, maxStringLength = 200) {
   return data
 }
 
-/**
- * 记录日志到文件
- * @param {string} logType - 日志类型 (recognition|fineGrained|subtitle|ai)
- * @param {string} action - 动作描述
- * @param {any} data - 要记录的数据
- */
+// 日志功能已移除 - 使用浏览器控制台进行调试
 export async function logToFile(logType, action, data) {
-  try {
-    // 只在开发环境中记录日志
-    if (process.env.NODE_ENV === 'production') {
-      return
-    }
-
-    const timestamp = formatTimestamp()
-    const logEntry = {
-      timestamp,
-      logType,
-      action,
-      data: sanitizeData(data)
-    }
-
-    // 生成日志文件名（按日期）
-    const now = new Date()
-    const dateStr = now.toISOString().split('T')[0] // YYYY-MM-DD
-    const logFileName = `recognition-log-${dateStr}.jsonl`
-
-    // 构建日志内容
-    const logLine = JSON.stringify(logEntry) + '\n'
-
-    // 使用Wails API写入文件（如果可用）或者使用浏览器下载
-    if (window.go && window.go.main && window.go.main.App && window.go.main.App.WriteLogToFile) {
-      try {
-        await window.go.main.App.WriteLogToFile(logFileName, logLine)
-      } catch (wailsError) {
-        console.warn('无法使用Wails写入日志文件，尝试使用浏览器下载:', wailsError)
-        fallbackToBrowserDownload(logFileName, logLine)
-      }
-    } else {
-      // 回退到浏览器控制台和下载
-      console.log(`[${logType.toUpperCase()}] ${action}:`, logEntry.data)
-      fallbackToBrowserDownload(logFileName, logLine)
-    }
-
-  } catch (error) {
-    console.error('日志记录失败:', error)
-  }
+  // 直接使用浏览器控制台输出，不记录到文件
+  console.log(`[${logType.toUpperCase()}] ${action}:`, data)
 }
 
 /**
- * 回退到浏览器下载方式
- * @param {string} fileName - 文件名
- * @param {string} content - 文件内容
- */
-function fallbackToBrowserDownload(fileName, content) {
-  try {
-    // 创建一个临时的日志存储
-    if (!window.recognitionLogs) {
-      window.recognitionLogs = {}
-    }
-
-    if (!window.recognitionLogs[fileName]) {
-      window.recognitionLogs[fileName] = []
-    }
-
-    window.recognitionLogs[fileName].push(content)
-
-    // 限制内存中的日志条数，避免内存泄漏
-    if (window.recognitionLogs[fileName].length > 1000) {
-      window.recognitionLogs[fileName] = window.recognitionLogs[fileName].slice(-500)
-    }
-
-    console.log(`日志已暂存到内存: ${fileName} (当前${window.recognitionLogs[fileName].length}条记录)`)
-
-  } catch (error) {
-    console.error('浏览器日志回退失败:', error)
-  }
-}
-
-/**
- * 下载累积的日志文件
+ * 下载日志文件（已禁用）
  * @param {string} fileName - 文件名
  */
 export function downloadLogFile(fileName) {
-  if (!window.recognitionLogs || !window.recognitionLogs[fileName]) {
-    console.warn('没有找到日志文件:', fileName)
-    console.log('💡 可用的日志文件:', Object.keys(window.recognitionLogs || {}))
-    console.log('🔍 使用 listAvailableLogs() 查看所有可用日志文件')
-    return
-  }
-
-  try {
-    const content = window.recognitionLogs[fileName].join('')
-    const blob = new Blob([content], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-
-    const a = document.createElement('a')
-    a.href = url
-    a.download = fileName
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-
-    console.log(`✅ 日志文件已下载: ${fileName}`)
-    console.log(`📊 文件包含 ${window.recognitionLogs[fileName].length} 条日志记录`)
-  } catch (error) {
-    console.error('❌ 下载日志文件失败:', error)
-  }
+  console.log('📝 日志下载功能已禁用，请使用浏览器控制台查看调试信息')
 }
 
 /**
- * 列出所有可用的日志文件
+ * 列出可用日志文件（已禁用）
  */
 export function listAvailableLogs() {
-  if (!window.recognitionLogs) {
-    console.log('📝 暂无日志文件')
-    return
-  }
-
-  const logFiles = Object.keys(window.recognitionLogs)
-  if (logFiles.length === 0) {
-    console.log('📝 暂无日志文件')
-    return
-  }
-
-  console.log('📁 可用的日志文件:')
-  logFiles.forEach(fileName => {
-    const recordCount = window.recognitionLogs[fileName].length
-    const fileSize = new Blob([window.recognitionLogs[fileName].join('')]).size
-    console.log(`  📄 ${fileName} (${recordCount} 条记录, ${(fileSize / 1024).toFixed(1)} KB)`)
-  })
-
-  console.log('💡 下载命令: RecognitionLogger.downloadLogFile("文件名")')
+  console.log('📝 日志功能已禁用，请使用浏览器控制台查看调试信息')
 }
 
 /**
- * 下载今日日志文件
+ * 下载今日日志（已禁用）
  */
 export function downloadTodayLog() {
-  const now = new Date()
-  const dateStr = now.toISOString().split('T')[0] // YYYY-MM-DD
-  const todayFileName = `recognition-log-${dateStr}.jsonl`
-  downloadLogFile(todayFileName)
+  console.log('📝 日志下载功能已禁用，请使用浏览器控制台查看调试信息')
 }
 
 /**
- * 清理旧的日志文件以释放内存
+ * 清理旧日志文件（已禁用）
  * @param {number} keepRecent - 保留最近几个文件的日志
  */
 export function cleanupOldLogs(keepRecent = 5) {
-  if (!window.recognitionLogs) return
-
-  const logFiles = Object.keys(window.recognitionLogs)
-  if (logFiles.length <= keepRecent) return
-
-  // 按文件名排序（日期格式），删除最旧的文件
-  logFiles.sort()
-  const filesToDelete = logFiles.slice(0, logFiles.length - keepRecent)
-
-  filesToDelete.forEach(fileName => {
-    delete window.recognitionLogs[fileName]
-    console.log(`🗑️ 已清理旧日志文件: ${fileName}`)
-  })
-
-  console.log(`✅ 日志清理完成，保留了最近的 ${keepRecent} 个文件`)
+  console.log('📝 日志清理功能已禁用，无需清理内存')
 }
 
 /**
@@ -433,15 +302,5 @@ export const RecognitionLogger = {
 
 export default RecognitionLogger
 
-// 将日志记录器暴露到全局 window 对象，使其在浏览器控制台中可访问
-if (typeof window !== 'undefined') {
-  window.RecognitionLogger = RecognitionLogger
-  console.log('🔍 RecognitionLogger 已暴露到全局，可以通过 window.RecognitionLogger 或 RecognitionLogger 直接访问')
-  console.log('📋 可用方法:')
-  console.log('  • RecognitionLogger.listAvailableLogs() - 列出所有日志文件')
-  console.log('  • RecognitionLogger.downloadTodayLog() - 下载今日日志')
-  console.log('  • RecognitionLogger.downloadLogFile("文件名") - 下载指定日志文件')
-  console.log('  • RecognitionLogger.cleanupOldLogs() - 清理旧日志文件')
-  console.log('  • RecognitionLogger.logRecognitionStart(data) - 记录识别开始')
-  console.log('  • RecognitionLogger.logFineGrainedProcessing(segments, options, result) - 记录细颗粒度处理')
-}
+// 日志记录器 - 仅使用浏览器控制台，不暴露到全局
+console.log('🔍 RecognitionLogger 已加载，使用浏览器控制台查看识别过程信息')

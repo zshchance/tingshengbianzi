@@ -132,7 +132,7 @@ import {
   highlightTimestamps,
   timeStringToSeconds
 } from '../utils/timeFormatter'
-import RecognitionLogger from '../utils/recognitionLogger'
+// 日志功能已移除 - 使用浏览器控制台进行调试
 
 const props = defineProps({
   visible: {
@@ -599,12 +599,13 @@ watch(
 
         const subtitleContent = copyLines.join('\n\n')
 
-        // 记录字幕生成日志
-        await RecognitionLogger.logSubtitleGeneration(
-          validSegments,
+        // 记录字幕生成到控制台
+        console.log('📝 字幕生成完成:', {
           format,
-          subtitleContent
-        )
+          segmentCount: validSegments.length,
+          contentLength: subtitleContent.length,
+          preview: subtitleContent.substring(0, 100) + '...'
+        })
       }
     }
   },
