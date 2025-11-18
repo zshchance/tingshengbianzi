@@ -52,9 +52,44 @@ else
     echo -e "${YELLOW}⚠️ 构建后图标修复脚本不存在${NC}"
 fi
 
-# 步骤4: 验证修复结果
+# 步骤4: 修复Whisper CLI
 echo ""
-echo "🔧 步骤4: 验证修复结果..."
+echo "🔧 步骤4: 修复Whisper CLI..."
+if [ -f "$PROJECT_ROOT/scripts/fix-whisper-cli.sh" ]; then
+    "$PROJECT_ROOT/scripts/fix-whisper-cli.sh"
+    echo -e "${GREEN}✅ Whisper CLI修复完成${NC}"
+else
+    echo -e "${YELLOW}⚠️ Whisper CLI修复脚本不存在${NC}"
+fi
+
+# 步骤5: 修复FFmpeg依赖
+echo ""
+echo "🔧 步骤5: 修复FFmpeg依赖..."
+if [ -f "$PROJECT_ROOT/scripts/bundle-ffmpeg.sh" ]; then
+    "$PROJECT_ROOT/scripts/bundle-ffmpeg.sh"
+    echo -e "${GREEN}✅ FFmpeg依赖打包完成${NC}"
+
+    # 将FFmpeg复制到应用Resources目录
+    echo "📦 复制FFmpeg到应用Resources目录..."
+    TARGET_RESOURCES="$PROJECT_ROOT/build/bin/tingshengbianzi.app/Contents/Resources"
+    SOURCE_FFMPEG="$PROJECT_ROOT/ffmpeg-binaries"
+
+    if [ -d "$SOURCE_FFMPEG" ]; then
+        mkdir -p "$TARGET_RESOURCES/ffmpeg-binaries"
+        cp "$SOURCE_FFMPEG"/* "$TARGET_RESOURCES/ffmpeg-binaries/"
+        chmod +x "$TARGET_RESOURCES/ffmpeg-binaries/ffmpeg"
+        chmod +x "$TARGET_RESOURCES/ffmpeg-binaries/ffprobe"
+        echo -e "${GREEN}✅ FFmpeg复制到应用Resources目录完成${NC}"
+    else
+        echo -e "${YELLOW}⚠️ FFmpeg源目录不存在，跳过复制${NC}"
+    fi
+else
+    echo -e "${YELLOW}⚠️ FFmpeg打包脚本不存在${NC}"
+fi
+
+# 步骤6: 验证修复结果
+echo ""
+echo "🔧 步骤6: 验证修复结果..."
 
 # 检查图标大小
 TARGET_ICON="$PROJECT_ROOT/build/bin/tingshengbianzi.app/Contents/Resources/iconfile.icns"
@@ -69,9 +104,19 @@ else
     echo -e "${RED}❌ 图标文件不存在${NC}"
 fi
 
+# 检查FFmpeg文件
+TARGET_FFMPEG="$PROJECT_ROOT/build/bin/tingshengbianzi.app/Contents/Resources/ffmpeg-binaries"
+if [ -f "$TARGET_FFMPEG/ffmpeg" ] && [ -f "$TARGET_FFMPEG/ffprobe" ]; then
+    FFMPEG_SIZE=$(stat -f%z "$TARGET_FFMPEG/ffmpeg" 2>/dev/null || echo "unknown")
+    FFPROBE_SIZE=$(stat -f%z "$TARGET_FFMPEG/ffprobe" 2>/dev/null || echo "unknown")
+    echo -e "${GREEN}✅ FFmpeg依赖正常: ffmpeg($FFMPEG_SIZE bytes), ffprobe($FFPROBE_SIZE bytes)${NC}"
+else
+    echo -e "${RED}❌ FFmpeg依赖文件不完整${NC}"
+fi
+
 # 测试应用启动（简单验证）
 echo ""
-echo "🔧 步骤5: 测试应用启动..."
+echo "🔧 步骤7: 测试应用启动..."
 echo "启动应用进行基本验证..."
 if open "$PROJECT_ROOT/build/bin/tingshengbianzi.app"; then
     echo -e "${GREEN}✅ 应用启动成功${NC}"

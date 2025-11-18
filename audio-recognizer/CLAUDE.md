@@ -42,7 +42,10 @@ wails build -clean
 # Using build scripts
 ./scripts/build.sh
 
-# Complete build with all dependencies (recommended for distribution)
+# Build with third-party dependencies (recommended)
+./scripts/build-with-third-party.sh
+
+# Complete build with all dependencies
 ./scripts/build-complete.sh
 
 # Cross-platform builds
@@ -72,6 +75,21 @@ curl -L https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-
 
 # Quantized model for better performance
 curl -L https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q8_0.bin -o models/whisper/ggml-large-v3-turbo-q8_0.bin
+```
+
+## Project Structure
+
+```
+audio-recognizer/
+├── third-party/                    # Third-party binary dependencies
+│   └── bin/                       # Binary executables
+│       ├── whisper-cli          # Whisper speech recognition CLI
+│       ├── ffmpeg               # FFmpeg multimedia framework
+│       └── ffprobe              # FFprobe media analysis tool
+├── frontend/                      # Vue.js frontend application
+├── backend/                       # Go backend application
+├── scripts/                       # Build and utility scripts
+└── wails.json                     # Wails configuration
 ```
 
 ## Architecture Overview
@@ -140,6 +158,26 @@ Advanced configuration system with real-time synchronization:
 3. **Whisper Recognition** - Process through Whisper.cpp with word timestamps and confidence scoring
 4. **Result Processing** - Generate formatted text with precise timestamps and AI optimization
 5. **Export Options** - Support for TXT, SRT, VTT, JSON formats with custom formatting
+
+### Third-Party Dependencies
+
+The application includes third-party binary dependencies managed in `third-party/bin/`:
+
+- **whisper-cli** (~825KB) - Whisper speech recognition CLI
+- **ffmpeg** (~489KB) - FFmpeg multimedia framework for audio processing
+- **ffprobe** (~286KB) - FFprobe media analysis tool for audio file inspection
+
+**Dependency Resolution Priority:**
+1. **Embedded Dependencies** (`Resources/third-party/bin/`) - Highest priority in production builds
+2. **Development Dependencies** (`third-party/bin/`) - Development environment
+3. **System PATH** - Fallback when internal dependencies unavailable
+
+**Building with Third-Party Dependencies:**
+```bash
+./scripts/build-with-third-party.sh
+```
+
+This script automatically packages all third-party dependencies into the application bundle, ensuring complete self-contained deployment.
 
 ### Model Structure
 Whisper models are stored in configurable paths (default `./models/whisper/`):

@@ -69,10 +69,25 @@ func NewWhisperService(config *models.RecognitionConfig) (*WhisperService, error
 
 	// 获取whisper-cli路径（尝试多个可能的路径）
 	possiblePaths := []string{
+		// 最高优先级：打包应用中的第三方依赖目录
+		filepath.Join(exeDir, "..", "Resources", "third-party", "bin", "whisper-cli"),
+		filepath.Join(exeDir, "Resources", "third-party", "bin", "whisper-cli"),
+		filepath.Join(exeDir, "..", "Resources", "whisper-cli"), // 备选
+		filepath.Join(exeDir, "Resources", "whisper-cli"),         // 备选
+
+		// 开发环境：第三方依赖目录
+		filepath.Join(exeDir, "..", "..", "third-party", "bin", "whisper-cli"),
+		filepath.Join(exeDir, "..", "third-party", "bin", "whisper-cli"),
+		filepath.Join(".", "third-party", "bin", "whisper-cli"),
+		"third-party/bin/whisper-cli",
+
+		// 开发环境：传统路径
 		filepath.Join(exeDir, "backend", "recognition", "whisper-cli"),
-		filepath.Join(".", "backend", "recognition", "whisper-cli"),
+		filepath.Join(exeDir, "..", "..", "backend", "recognition", "whisper-cli"),
 		"backend/recognition/whisper-cli",
-		"whisper-cli", // 假设在PATH中
+
+		// 系统PATH
+		"whisper-cli",
 	}
 
 	var whisperPath string

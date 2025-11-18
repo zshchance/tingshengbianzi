@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"embed"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -25,15 +26,17 @@ type App struct {
 	config      *models.RecognitionConfig
 	isRecognizing bool
 	mu          sync.RWMutex
+	thirdPartyFS embed.FS
 }
 
 // NewApp creates a new App application struct
-func NewApp() *App {
+func NewApp(thirdParty embed.FS) *App {
 	// 加载默认配置
 	config := loadDefaultConfig()
 
 	return &App{
-		config: config,
+		config:      config,
+		thirdPartyFS: thirdParty,
 	}
 }
 
@@ -46,6 +49,14 @@ func (a *App) startup(ctx context.Context) {
 	utils.InitLogger()
 	utils.LogInfo("=== 听声辨字应用程序启动 ===")
 	utils.LogInfo("应用上下文初始化完成")
+
+	// 提取第三方依赖到本地文件系统
+	if err := a.extractThirdPartyDependencies(); err != nil {
+		fmt.Printf("提取第三方依赖失败: %v\n", err)
+		utils.LogError("提取第三方依赖失败: %v", err)
+	} else {
+		utils.LogInfo("第三方依赖提取成功")
+	}
 
 	// 初始化AI提示词模板系统
 	if err := a.initializeTemplates(); err != nil {
@@ -64,6 +75,88 @@ func (a *App) startup(ctx context.Context) {
 	}
 
 	utils.LogInfo("应用程序启动完成")
+}
+
+// extractThirdPartyDependencies 提取嵌入的第三方依赖到本地文件系统
+func (a *App) extractThirdPartyDependencies() error {
+	// 获取应用的可执行文件目录
+	exePath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("获取可执行文件路径失败: %v", err)
+	}
+
+	exeDir := filepath.Dir(exePath)
+	var targetDir string
+
+	// 判断运行环境，确定目标目录
+	if strings.Contains(exeDir, ".app/Contents/MacOS") {
+		// 在.app包中：提取到 Resources/third-party/bin
+		targetDir = filepath.Join(filepath.Dir(exeDir), "Resources", "third-party", "bin")
+	} else {
+		// 开发环境：提取到项目根目录的 third-party/bin
+		appRoot := getAppRootDirectory()
+		targetDir = filepath.Join(appRoot, "third-party", "bin")
+	}
+
+	fmt.Printf("🎯 第三方依赖目标目录: %s\n", targetDir)
+
+	// 确保目标目录存在
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return fmt.Errorf("创建目标目录失败: %v", err)
+	}
+
+	// 需要提取的文件列表
+	requiredFiles := []string{
+		"third-party/bin/whisper-cli",
+		"third-party/bin/ffmpeg",
+		"third-party/bin/ffprobe",
+	}
+
+	// 提取每个文件
+	for _, filePath := range requiredFiles {
+		if err := a.extractThirdPartyFile(filePath, targetDir); err != nil {
+			return fmt.Errorf("提取文件 %s 失败: %v", filePath, err)
+		}
+	}
+
+	fmt.Printf("✅ 第三方依赖提取完成，共提取 %d 个文件\n", len(requiredFiles))
+	return nil
+}
+
+// extractThirdPartyFile 提取单个第三方依赖文件
+func (a *App) extractThirdPartyFile(embedPath, targetDir string) error {
+	fmt.Printf("📦 提取文件: %s\n", embedPath)
+
+	// 从嵌入的文件系统中读取文件
+	data, err := a.thirdPartyFS.ReadFile(embedPath)
+	if err != nil {
+		return fmt.Errorf("读取嵌入文件失败: %v", err)
+	}
+
+	// 获取文件名
+	fileName := filepath.Base(embedPath)
+	targetPath := filepath.Join(targetDir, fileName)
+
+	// 检查目标文件是否已存在且内容相同
+	if existingData, err := os.ReadFile(targetPath); err == nil {
+		if len(existingData) == len(data) {
+			fmt.Printf("⏭️ 文件已存在且内容相同: %s\n", targetPath)
+			return nil
+		}
+	}
+
+	// 写入文件
+	if err := os.WriteFile(targetPath, data, 0755); err != nil {
+		return fmt.Errorf("写入文件失败: %v", err)
+	}
+
+	// 验证文件是否可执行
+	if err := os.Chmod(targetPath, 0755); err != nil {
+		fmt.Printf("⚠️ 设置可执行权限失败: %v\n", err)
+	}
+
+	fmt.Printf("✅ 文件提取成功: %s (%d bytes)\n", targetPath, len(data))
+	return nil
 }
 
 // initializeTemplates 初始化AI提示词模板系统
@@ -198,10 +291,15 @@ func getUserConfigDirectory() (string, string) {
 	}
 
 	exeDir := filepath.Dir(exePath)
+	fmt.Printf("🔍 可执行文件路径: %s\n", exePath)
+	fmt.Printf("🔍 可执行文件目录: %s\n", exeDir)
 
 	// 如果在.app包中，且检测到项目环境，则使用项目目录（开发模式）
 	if strings.Contains(exeDir, ".app/Contents/MacOS") {
+		fmt.Printf("🍎 检测到在.app包中运行\n")
 		appRoot := getAppRootDirectory()
+		fmt.Printf("🔍 项目根目录: %s\n", appRoot)
+
 		// 检查是否真的在项目开发环境中（有项目文件）
 		goModExists := true
 		wailsJsonExists := true
@@ -213,8 +311,11 @@ func getUserConfigDirectory() (string, string) {
 			wailsJsonExists = false
 		}
 
+		fmt.Printf("📋 go.mod存在: %v, wails.json存在: %v\n", goModExists, wailsJsonExists)
+
 		if goModExists && wailsJsonExists {
 			// 开发环境：使用项目目录
+			fmt.Printf("🛠️ 使用开发环境配置目录: %s\n", appRoot)
 			return appRoot, "config"
 		}
 	}
@@ -222,19 +323,25 @@ func getUserConfigDirectory() (string, string) {
 	// 生产环境：使用用户主目录
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
+		fmt.Printf("❌ 获取用户主目录失败: %v\n", err)
 		// 回退到应用目录
+		fmt.Printf("🔄 回退到应用配置目录: %s\n", exeDir)
 		return exeDir, "config"
 	}
 
 	// 创建用户配置目录：~/Library/Application Support/听声辨字/
 	configDir := filepath.Join(homeDir, "Library", "Application Support", "听声辨字")
+	fmt.Printf("🏠 用户配置目录: %s\n", configDir)
 
 	// 确保目录存在
 	if err := os.MkdirAll(configDir, 0755); err != nil {
+		fmt.Printf("❌ 创建用户配置目录失败: %v\n", err)
 		// 如果创建失败，回退到应用目录
+		fmt.Printf("🔄 回退到应用配置目录: %s\n", exeDir)
 		return exeDir, "config"
 	}
 
+	fmt.Printf("✅ 使用生产环境配置目录: %s\n", configDir)
 	return configDir, ""
 }
 
@@ -243,10 +350,11 @@ func loadDefaultConfig() *models.RecognitionConfig {
 	// 获取用户配置目录和相对路径
 	userConfigDir, configSubDir := getUserConfigDirectory()
 
-	// 创建默认配置
+	// 创建默认配置（使用绝对路径）
+	appRoot := getAppRootDirectory()
 	defaultConfig := &models.RecognitionConfig{
 		Language:              "zh-CN",
-		ModelPath:             filepath.Join(userConfigDir, "models"),
+		ModelPath:             filepath.Join(appRoot, "models"),
 		SpecificModelFile:     "", // 用户指定的具体模型文件
 		SampleRate:            16000,
 		BufferSize:            4000,
@@ -268,10 +376,17 @@ func loadDefaultConfig() *models.RecognitionConfig {
 	}
 
 	fmt.Printf("📂 配置文件路径: %s\n", configFile)
+	fmt.Printf("🎯 应用根目录: %s\n", appRoot)
+	fmt.Printf("📍 默认模型路径: %s\n", defaultConfig.ModelPath)
 
 	if configData, err := os.ReadFile(configFile); err == nil {
+		fmt.Printf("📖 找到配置文件，开始解析: %s\n", configFile)
 		var userConfig models.RecognitionConfig
 		if json.Unmarshal(configData, &userConfig) == nil {
+			fmt.Printf("✅ 配置文件解析成功\n")
+			fmt.Printf("📝 用户配置模型路径: %s\n", userConfig.ModelPath)
+			fmt.Printf("📝 用户配置模型文件: %s\n", userConfig.SpecificModelFile)
+
 			// 合并用户配置（保留默认值，用户配置覆盖相应字段）
 			defaultConfig.Language = userConfig.Language
 			defaultConfig.ModelPath = userConfig.ModelPath
@@ -284,14 +399,16 @@ func loadDefaultConfig() *models.RecognitionConfig {
 			defaultConfig.EnableNormalization = userConfig.EnableNormalization
 			defaultConfig.EnableNoiseReduction = userConfig.EnableNoiseReduction
 
-			fmt.Printf("✅ 已加载用户配置文件: %s\n", configFile)
+			fmt.Printf("✅ 已加载用户配置: 模型路径=%s, 模型文件=%s\n",
+				defaultConfig.ModelPath, defaultConfig.SpecificModelFile)
 		} else {
 			fmt.Printf("⚠️ 配置文件格式错误，使用默认配置: %s\n", configFile)
 		}
 	} else {
-		fmt.Printf("ℹ️ 未找到用户配置文件，使用默认配置\n")
+		fmt.Printf("ℹ️ 未找到用户配置文件，使用默认配置 (错误: %v)\n", err)
 	}
 
+	fmt.Printf("🎯 最终配置模型路径: %s\n", defaultConfig.ModelPath)
 	return defaultConfig
 }
 

@@ -68,36 +68,46 @@ func (m *EmbeddedFFmpegManager) tryEmbeddedFFmpeg() (string, string) {
 	}
 	exeDir := filepath.Dir(exePath)
 
-	fmt.Printf("查找嵌入FFmpeg，可执行文件目录: %s\n", exeDir)
-
 	// 尝试不同位置的嵌入FFmpeg
 	searchPaths := []struct {
 		name string
 		path string
 	}{
-		// 开发环境：在项目根目录下运行
-		{"项目根目录", filepath.Join(filepath.Dir(exeDir), "ffmpeg-binaries")},
-		// 开发环境：可执行文件在 .app/Contents/MacOS 下，ffmpeg 在项目根目录
-		{"项目根目录(从app内)", filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(exeDir))), "ffmpeg-binaries")},
-		// 打包环境：同目录
-		{"同目录", filepath.Join(exeDir, "ffmpeg-binaries")},
-		// 打包环境：Resources目录
-		{"Resources目录", filepath.Join(filepath.Dir(exeDir), "Resources", "ffmpeg-binaries")},
+		// 最高优先级：打包应用中的第三方依赖目录
+		{"Resources第三方依赖", filepath.Join(filepath.Dir(exeDir), "Resources", "third-party", "bin")},
+		{"Resources(备用)", filepath.Join(exeDir, "Resources", "third-party", "bin")},
+
+		// 备选：旧版Resources目录
+		{"Resources旧版", filepath.Join(filepath.Dir(exeDir), "Resources", "ffmpeg-binaries")},
 		{"resources目录", filepath.Join(filepath.Dir(exeDir), "resources", "ffmpeg-binaries")},
-		// 打包环境：上一级目录
+
+		// 开发环境：第三方依赖目录
+		{"项目第三方依赖", filepath.Join(filepath.Dir(exeDir), "third-party", "bin")},
+		{"项目第三方依赖(向上)", filepath.Join(filepath.Dir(filepath.Dir(exeDir)), "third-party", "bin")},
+		{"第三方依赖根目录", filepath.Join(".", "third-party", "bin")},
+
+		// 开发环境：旧版项目目录
+		{"项目根目录", filepath.Join(filepath.Dir(exeDir), "ffmpeg-binaries")},
+		{"项目根目录(向上)", filepath.Join(filepath.Dir(filepath.Dir(exeDir)), "ffmpeg-binaries")},
+		{"项目根目录(从app内)", filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(exeDir))), "ffmpeg-binaries")},
+
+		// 打包环境：其他位置
+		{"同目录", filepath.Join(exeDir, "ffmpeg-binaries")},
 		{"上一级目录", filepath.Join(filepath.Dir(exeDir), "ffmpeg-binaries")},
-		// 额外尝试：从exeDir向上两层找到项目根目录
 		{"上两级目录", filepath.Join(filepath.Dir(filepath.Dir(exeDir)), "ffmpeg-binaries")},
+
+		// 最后备选：临时目录
+		{"临时目录", filepath.Join(os.TempDir(), "ffmpeg-binaries")},
 	}
 
 	for _, search := range searchPaths {
 		ffmpegPath := filepath.Join(search.path, "ffmpeg")
 		ffprobePath := filepath.Join(search.path, "ffprobe")
 
-		fmt.Printf("尝试位置 %s: %s\n", search.name, search.path)
-
 		if m.isExecutable(ffmpegPath) && m.isExecutable(ffprobePath) {
-			fmt.Printf("✅ 在 %s 找到嵌入FFmpeg\n", search.name)
+			fmt.Printf("✅ 找到嵌入FFmpeg在 %s\n", search.name)
+			fmt.Printf("   ffmpeg: %s\n", ffmpegPath)
+			fmt.Printf("   ffprobe: %s\n", ffprobePath)
 			return ffmpegPath, ffprobePath
 		}
 	}
