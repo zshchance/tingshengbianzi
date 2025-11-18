@@ -7,6 +7,7 @@
       :class="{
         'loading': props.isLoading
       }"
+      @click="handleDropZoneClick"
     >
       <div class="drop-content">
         <div class="drop-icon">
@@ -14,17 +15,17 @@
         </div>
         <h3>{{ props.isLoading ? '正在处理文件...' : '选择音频文件' }}</h3>
         <p class="drop-description">
-          {{ props.isLoading ? '请稍候' : '点击下方按钮选择音频文件，或将文件直接拖拽到应用窗口' }}
+          {{ props.isLoading ? '请稍候' : '点击此区域任意位置选择音频文件，或将文件直接拖拽到此处' }}
         </p>
         <p class="drop-hint">
           💡 提示：支持 MP3、WAV、M4A、AAC、OGG、FLAC 等音频格式
         </p>
         <button
-          class="btn btn-primary"
+          class="btn btn-secondary"
           :disabled="props.isLoading"
           @click="handleButtonClick"
         >
-          📂 选择文件
+          📂 或点击此按钮选择文件
         </button>
       </div>
     </div>
@@ -117,14 +118,45 @@ const clearFile = () => {
   emit('clear-file')
 }
 
+// 拖拽区域点击处理函数
+const handleDropZoneClick = () => {
+  console.log('🎯 拖拽区域被点击了!', {
+    isLoading: props.isLoading,
+    hasFile: props.hasFile,
+    timestamp: new Date().toISOString()
+  })
+
+  // 如果正在加载，不响应点击
+  if (props.isLoading) {
+    console.log('⏳ 正在加载中，忽略点击')
+    return
+  }
+
+  try {
+    console.log('🚀 准备调用 openFileDialog...')
+    emit('open-file-dialog')
+    console.log('✅ openFileDialog 调用完成')
+  } catch (error) {
+    console.error('❌ openFileDialog 调用失败:', error)
+  }
+}
+
 // 按钮点击处理函数（添加调试）
-const handleButtonClick = () => {
+const handleButtonClick = (event) => {
+  // 阻止事件冒泡，避免重复触发拖拽区域的点击事件
+  event.stopPropagation()
+
   console.log('🖱️ 按钮被点击了!', {
     isLoading: props.isLoading,
     dragOver: props.dragOver,
     hasFile: props.hasFile,
     timestamp: new Date().toISOString()
   })
+
+  if (props.isLoading) {
+    console.log('⏳ 正在加载中，忽略按钮点击')
+    return
+  }
 
   try {
     console.log('🚀 准备调用 openFileDialog...')
@@ -179,6 +211,7 @@ const maxFileSizeMB = computed(() => {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
+  user-select: none; /* 防止文本选择干扰点击 */
 }
 
 .file-drop-zone:hover {
@@ -186,6 +219,11 @@ const maxFileSizeMB = computed(() => {
   background: var(--bg-hover, #f0f9ff);
   transform: translateY(-2px);
   box-shadow: 0 8px 25px rgba(59, 130, 246, 0.15);
+}
+
+.file-drop-zone:active {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.25);
 }
 
 .file-drop-zone.drag-over {
