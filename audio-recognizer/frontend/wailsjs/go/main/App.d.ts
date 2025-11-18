@@ -18,6 +18,8 @@ export function GetTemplateManagerInfo():Promise<Record<string, any>>;
 
 export function LoadModel(arg1:string,arg2:string):Promise<main.RecognitionResponse>;
 
+export function OnFileDrop(arg1:Array<string>):Promise<void>;
+
 export function SelectAudioFile():Promise<Record<string, any>>;
 
 export function SelectModelDirectory():Promise<Record<string, any>>;

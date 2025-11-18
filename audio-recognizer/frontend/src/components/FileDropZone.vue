@@ -14,7 +14,7 @@
         </div>
         <h3>{{ props.isLoading ? '正在处理文件...' : '选择音频文件' }}</h3>
         <p class="drop-description">
-          {{ props.isLoading ? '请稍候' : '点击下方按钮选择音频文件，或将文件拖拽到应用窗口' }}
+          {{ props.isLoading ? '请稍候' : '点击下方按钮选择音频文件，或将文件直接拖拽到应用窗口' }}
         </p>
         <p class="drop-hint">
           💡 提示：支持 MP3、WAV、M4A、AAC、OGG、FLAC 等音频格式

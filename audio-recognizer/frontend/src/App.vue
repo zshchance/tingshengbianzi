@@ -9,10 +9,13 @@
       <header class="app-header">
         <div class="header-content">
           <div class="app-title">
-            <h1>🎵 Audio Recognizer</h1>
+            <h1>🎵 听声辨字</h1>
             <p class="subtitle">智能音频识别工具</p>
           </div>
           <div class="header-actions">
+            <button @click="showAboutModal = true" class="btn btn-secondary" title="关于">
+              ℹ️ 关于
+            </button>
             <button @click="showSettings = true" class="btn btn-secondary" title="设置">
               ⚙️ 设置
             </button>
@@ -97,6 +100,69 @@
       @close="showSettings = false"
       @save="handleSettingsSave"
     />
+
+    <!-- 关于模态框 -->
+    <div v-if="showAboutModal" class="modal-overlay" @click.self="showAboutModal = false">
+      <div class="modal-content about-modal">
+        <div class="modal-header">
+          <h3>🎵 关于听声辨字</h3>
+          <button @click="showAboutModal = false" class="close-btn" title="关闭">
+            ✕
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="about-content">
+            <div class="app-icon">🎵</div>
+            <h4>听声辨字</h4>
+            <p class="version">版本 1.0.0</p>
+            <p class="description">
+              一款基于 Whisper 引擎的智能音频识别工具，支持多种音频格式的语音转文字功能，
+              并提供精确的时间戳和AI优化选项。
+            </p>
+
+            <div class="contact-info">
+              <h5>联系方式</h5>
+              <div class="contact-item">
+                <span class="icon">🌐</span>
+                <span>网站：<a href="#" @click="openWebsite('administrator.wiki')">administrator.wiki</a></span>
+              </div>
+              <div class="contact-item">
+                <span class="icon">📧</span>
+                <span>邮箱：<a href="mailto:zshchance@qq.com">zshchance@qq.com</a></span>
+              </div>
+              <div class="contact-item">
+                <span class="icon">👤</span>
+                <span>开发者：这家伙很懒</span>
+              </div>
+            </div>
+
+            <div class="legal-notice">
+              <h5>免费声明</h5>
+              <p class="notice-text">
+                <strong>本软件完全免费使用，严禁任何商家或个人进行贩卖获利！</strong><br>
+                本软件使用 Whisper 开源引擎进行语音识别，遵循开源协议。
+                用户可以免费使用、修改和分发，但不得用于商业目的。
+              </p>
+            </div>
+
+            <div class="tech-stack">
+              <h5>技术栈</h5>
+              <ul>
+                <li>🔧 后端：Go + Wails v2</li>
+                <li>🎨 前端：Vue.js 3 + Vite</li>
+                <li>🤖 识别引擎：Whisper.cpp</li>
+                <li>🎵 音频处理：FFmpeg</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button @click="showAboutModal = false" class="btn btn-primary">
+            确定
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -163,6 +229,7 @@ const { settings, initialize: initializeSettings } = useSettings()
 // 应用状态
 const isProcessing = ref(false)
 const showSettings = ref(false)
+const showAboutModal = ref(false)
 const recognitionResult = ref(null)
 const showResults = ref(false)
 
@@ -184,6 +251,11 @@ let progressStartTime = null
 // 设置保存处理
 const handleSettingsSave = () => {
   toastStore.showSuccess('设置已保存', '应用设置已更新')
+}
+
+// 打开网站链接
+const openWebsite = (url) => {
+  window.open(`https://${url}`, '_blank')
 }
 
 // 导出处理
@@ -385,57 +457,70 @@ const stopRecognition = async () => {
 }
 
 
-// 添加浏览器拖拽支持（作为Wails原生拖拽的补充）
+// 浏览器级别拖拽支持 - 作为备用方案
 const setupBrowserDragDrop = () => {
-  const dropZone = document.querySelector('.file-drop-zone')
-  if (dropZone) {
-    dropZone.addEventListener('dragover', (e) => {
-      e.preventDefault()
-      e.stopPropagation()
-      dropZone.classList.add('drag-over')
-    })
+  console.log('🎯 设置浏览器级别拖拽支持')
 
-    dropZone.addEventListener('dragleave', (e) => {
-      e.preventDefault()
-      e.stopPropagation()
-      dropZone.classList.remove('drag-over')
-    })
+  // 添加全局拖拽事件监听器
+  document.addEventListener('dragover', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    console.log('🔄 检测到拖拽悬停事件')
+  })
 
-    dropZone.addEventListener('drop', async (e) => {
-      e.preventDefault()
-      e.stopPropagation()
-      dropZone.classList.remove('drag-over')
+  document.addEventListener('drop', async (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    console.log('🔄 检测到文件拖放事件')
 
-      const files = e.dataTransfer.files
-      if (files.length > 0) {
-        const file = files[0]
-        console.log('📁 浏览器拖拽文件:', {
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          path: file.path || file.webkitRelativePath || file.name,
-          hasPath: !!file.path
-        })
+    const files = e.dataTransfer.files
+    if (files.length > 0) {
+      const file = files[0]
+      console.log('📁 浏览器拖拽文件:', {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        path: file.path || file.webkitRelativePath || file.name,
+        hasPath: !!file.path
+      })
 
-        // 检查是否为音频文件
-        const audioTypes = ['audio/mpeg', 'audio/wav', 'audio/mp3', 'audio/mp4', 'audio/aac', 'audio/ogg', 'audio/flac', 'audio/m4a']
-        const fileName = file.name.toLowerCase()
-        const isAudio = audioTypes.some(type => file.type.includes(type.split('/')[1])) ||
-                      fileName.match(/\.(mp3|wav|m4a|aac|ogg|flac)$/i)
+      // 检查是否为音频文件
+      const audioTypes = ['audio/mpeg', 'audio/wav', 'audio/mp3', 'audio/mp4', 'audio/aac', 'audio/ogg', 'audio/flac', 'audio/m4a']
+      const fileName = file.name.toLowerCase()
+      const isAudio = audioTypes.some(type => file.type.includes(type.split('/')[1])) ||
+                    fileName.match(/\.(mp3|wav|m4a|aac|ogg|flac)$/i)
 
-        if (isAudio) {
-          // 使用老版本的文件处理方式
-          await processDroppedFile(file)
+      if (isAudio) {
+        console.log('✅ 确认为音频文件，开始处理')
+
+        // 检查文件是否有完整路径
+        if (file.path || file.webkitRelativePath) {
+          // 有完整路径，直接处理
+          console.log('📁 文件有完整路径，直接处理')
+          await handleFileSelect(file)
         } else {
-          toastStore.addToast({
-            type: 'error',
-            title: '文件格式错误',
-            message: '请选择 MP3、WAV、M4A、AAC、OGG 或 FLAC 格式的音频文件'
-          })
+          // 没有完整路径，显示提示并打开文件选择对话框
+          console.log('⚠️ 拖拽文件缺少完整路径，使用文件对话框重新选择')
+          toastStore.showWarning('需要重新选择文件', '拖拽的文件缺少完整路径，请使用"选择文件"按钮重新选择音频文件')
+          // 清除可能的文件状态
+          if (currentFile.value) {
+            audioFile.clearFile()
+          }
         }
+      } else {
+        console.log('❌ 不是音频文件')
+        toastStore.addToast({
+          type: 'error',
+          title: '文件格式错误',
+          message: '请选择 MP3、WAV、M4A、AAC、OGG 或 FLAC 格式的音频文件'
+        })
       }
-    })
-  }
+    } else {
+      console.log('❌ 没有检测到文件')
+    }
+  })
+
+  console.log('✅ 浏览器拖拽事件监听器已设置')
 }
 
 // 处理拖拽文件（基于老版本EventHandler.js的processAudioFile）
@@ -1041,6 +1126,41 @@ const setupGlobalWailsEvents = () => {
   })
 
   
+  // Wails原生文件拖放事件监听
+  EventsOn('file-dropped', (data) => {
+    console.log('🎯 Wails原生文件拖放事件:', data)
+
+    if (data.success && data.file) {
+      const fileData = data.file
+      console.log('✅ 收到Wails原生拖放文件:', fileData)
+
+      // 创建模拟的File对象用于处理
+      const mockFile = {
+        name: fileData.name,
+        path: fileData.path,
+        size: fileData.size,
+        type: `audio/${fileData.extension.replace('.', '')}`,
+        hasPath: fileData.hasPath,
+        webkitRelativePath: '',
+        lastModified: Date.now()
+      }
+
+      console.log('🎯 准备处理Wails原生拖放文件:', mockFile)
+
+      // 直接处理文件，因为已经有完整路径
+      handleFileSelect(mockFile)
+    } else {
+      console.error('❌ Wails原生文件拖放数据无效:', data)
+      toastStore.showError('文件拖放失败', '拖放的文件数据无效')
+    }
+  })
+
+  // Wails原生文件拖放错误事件监听
+  EventsOn('file-drop-error', (errorData) => {
+    console.log('❌ Wails原生文件拖放错误:', errorData)
+    toastStore.showError('文件拖放错误', errorData.message || errorData.error)
+  })
+
   console.log('✅ 全局Wails事件监听器设置完成')
 }
 
@@ -1061,7 +1181,7 @@ onMounted(async () => {
     setupGlobalWailsEvents()
     console.log('✅ 全局事件监听器设置完成')
 
-    // 设置浏览器拖拽支持（作为Wails原生拖拽的补充）
+    // 设置浏览器拖拽支持
     setupBrowserDragDrop()
     console.log('✅ 浏览器拖拽支持已设置')
 
@@ -1149,5 +1269,296 @@ onMounted(async () => {
 
 :deep(.btn:disabled:hover) {
   transform: none !important;
+}
+
+/* 关于模态框样式 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+  backdrop-filter: blur(4px);
+}
+
+.modal-content {
+  background: var(--card-bg, #ffffff);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-color, #e5e7eb);
+}
+
+.about-modal {
+  max-width: 600px;
+  width: 90%;
+}
+
+.about-content {
+  text-align: center;
+  padding: 24px;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  background: var(--bg-secondary, #f9fafb);
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: var(--text-primary, #1f2937);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: var(--text-secondary, #6b7280);
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.close-btn:hover {
+  background: var(--bg-hover, #f3f4f6);
+  color: var(--text-primary, #1f2937);
+}
+
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+  background: var(--bg-secondary, #f9fafb);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.app-icon {
+  font-size: 4rem;
+  margin-bottom: 16px;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.about-content h4 {
+  color: var(--text-primary, #1f2937);
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+}
+
+.version {
+  color: var(--text-secondary, #6b7280);
+  font-size: 14px;
+  margin: 0 0 16px 0;
+}
+
+.description {
+  color: var(--text-primary, #1f2937);
+  line-height: 1.6;
+  margin: 0 0 24px 0;
+  text-align: left;
+}
+
+.contact-info {
+  margin: 24px 0;
+  text-align: left;
+}
+
+.contact-info h5 {
+  color: var(--text-primary, #1f2937);
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  padding-bottom: 6px;
+}
+
+.contact-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--text-secondary, #6b7280);
+  font-size: 14px;
+}
+
+.contact-item .icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+}
+
+.contact-item a {
+  color: var(--primary-color, #3b82f6);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.contact-item a:hover {
+  color: var(--primary-hover, #2563eb);
+  text-decoration: underline;
+}
+
+.legal-notice {
+  margin: 24px 0;
+  padding: 16px;
+  background: var(--warning-bg, #fef3c7);
+  border: 1px solid var(--warning-border, #f59e0b);
+  border-radius: 8px;
+  text-align: left;
+}
+
+.legal-notice h5 {
+  color: var(--warning-text, #92400e);
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+}
+
+.notice-text {
+  color: var(--warning-text, #92400e);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.notice-text strong {
+  color: var(--danger-color, #dc2626);
+  font-weight: 700;
+}
+
+.tech-stack {
+  margin: 24px 0;
+  text-align: left;
+}
+
+.tech-stack h5 {
+  color: var(--text-primary, #1f2937);
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  padding-bottom: 6px;
+}
+
+.tech-stack ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.tech-stack li {
+  color: var(--text-secondary, #6b7280);
+  font-size: 14px;
+  padding: 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 深色主题支持 */
+@media (prefers-color-scheme: dark) {
+  .modal-overlay {
+    background: rgba(0, 0, 0, 0.7);
+  }
+
+  .modal-content {
+    background: var(--card-bg-dark, #1f2937);
+    border-color: var(--border-color-dark, #374151);
+  }
+
+  .about-modal {
+    background: var(--card-bg-dark, #1f2937);
+    border-color: var(--border-color-dark, #374151);
+  }
+
+  .modal-header {
+    background: var(--bg-secondary-dark, #374151);
+    border-color: var(--border-color-dark, #374151);
+  }
+
+  .modal-header h3 {
+    color: var(--text-primary-dark, #f9fafb);
+  }
+
+  .close-btn {
+    color: var(--text-muted-dark, #9ca3af);
+  }
+
+  .close-btn:hover {
+    background: var(--bg-hover-dark, #4b5563);
+    color: var(--text-primary-dark, #f9fafb);
+  }
+
+  .modal-footer {
+    background: var(--bg-secondary-dark, #374151);
+    border-color: var(--border-color-dark, #374151);
+  }
+
+  .about-content h4 {
+    color: var(--text-primary-dark, #f9fafb);
+  }
+
+  .description {
+    color: var(--text-secondary-dark, #d1d5db);
+  }
+
+  .contact-info h5,
+  .tech-stack h5 {
+    color: var(--text-primary-dark, #f9fafb);
+    border-color: var(--border-color-dark, #374151);
+  }
+
+  .contact-item {
+    color: var(--text-muted-dark, #9ca3af);
+  }
+
+  .contact-item a {
+    color: var(--primary-color, #3b82f6);
+  }
+
+  .legal-notice {
+    background: var(--warning-bg-dark, #451a03);
+    border-color: var(--warning-border-dark, #f59e0b);
+  }
+
+  .legal-notice h5 {
+    color: var(--warning-text-dark, #fbbf24);
+  }
+
+  .notice-text {
+    color: var(--warning-text-dark, #fbbf24);
+  }
+
+  .tech-stack li {
+    color: var(--text-muted-dark, #9ca3af);
+  }
 }
 </style>

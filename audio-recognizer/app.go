@@ -1233,3 +1233,105 @@ func (a *App) sendProgressEvent(eventType string, data interface{}) {
 		runtime.EventsEmit(a.ctx, eventType, data)
 	}
 }
+
+// OnFileDrop 处理Wails原生文件拖放事件
+func (a *App) OnFileDrop(files []string) {
+	fmt.Printf("🎯 OnFileDrop: 收到 %d 个文件\n", len(files))
+
+	if len(files) == 0 {
+		fmt.Println("❌ OnFileDrop: 没有文件")
+		return
+	}
+
+	// 只处理第一个文件
+	filePath := files[0]
+	fmt.Printf("📁 OnFileDrop: 处理文件: %s\n", filePath)
+
+	// 检查文件是否为音频格式
+	ext := strings.ToLower(filepath.Ext(filePath))
+	audioFormats := map[string]bool{
+		".mp3":  true,
+		".wav":  true,
+		".m4a":  true,
+		".aac":  true,
+		".ogg":  true,
+		".flac": true,
+	}
+
+	if !audioFormats[ext] {
+		fmt.Printf("❌ OnFileDrop: 不支持的音频格式: %s\n", ext)
+		runtime.EventsEmit(a.ctx, "file-drop-error", map[string]interface{}{
+			"error":   "不支持的音频格式",
+			"message": "请选择 MP3、WAV、M4A、AAC、OGG 或 FLAC 格式的音频文件",
+			"file":    filePath,
+		})
+		return
+	}
+
+	// 检查文件是否存在
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		fmt.Printf("❌ OnFileDrop: 文件不存在: %s\n", filePath)
+		runtime.EventsEmit(a.ctx, "file-drop-error", map[string]interface{}{
+			"error":   "文件不存在",
+			"message": "拖拽的文件不存在或无法访问",
+			"file":    filePath,
+		})
+		return
+	}
+
+	// 获取文件信息
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		fmt.Printf("❌ OnFileDrop: 无法获取文件信息: %v\n", err)
+		runtime.EventsEmit(a.ctx, "file-drop-error", map[string]interface{}{
+			"error":   "无法获取文件信息",
+			"message": err.Error(),
+			"file":    filePath,
+		})
+		return
+	}
+
+	// 限制文件大小 (100MB)
+	const maxFileSize = 100 * 1024 * 1024
+	if fileInfo.Size() > maxFileSize {
+		fmt.Printf("❌ OnFileDrop: 文件过大: %d bytes\n", fileInfo.Size())
+		runtime.EventsEmit(a.ctx, "file-drop-error", map[string]interface{}{
+			"error":   "文件过大",
+			"message": "文件大小不能超过 100MB",
+			"file":    filePath,
+		})
+		return
+	}
+
+	fmt.Printf("✅ OnFileDrop: 文件验证通过，发送前端处理事件\n")
+
+	// 发送文件拖放成功事件到前端
+	fileData := map[string]interface{}{
+		"success": true,
+		"file": map[string]interface{}{
+			"name":         filepath.Base(filePath),
+			"path":         filePath,
+			"size":         fileInfo.Size(),
+			"sizeFormatted": formatFileSize(fileInfo.Size()),
+			"extension":    ext,
+			"hasPath":      true,
+		},
+	}
+
+	runtime.EventsEmit(a.ctx, "file-dropped", fileData)
+	fmt.Printf("📤 OnFileDrop: 已发送文件拖放事件到前端\n")
+}
+
+// formatFileSize 格式化文件大小
+func formatFileSize(size int64) string {
+	const unit = 1024
+	if size < unit {
+		return fmt.Sprintf("%d B", size)
+	}
+	div, exp := int64(unit), 0
+	for n := size / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(size)/float64(div), "KMGTPE"[exp])
+}

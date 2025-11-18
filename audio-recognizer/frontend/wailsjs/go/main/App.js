@@ -34,6 +34,10 @@ export function LoadModel(arg1, arg2) {
   return window['go']['main']['App']['LoadModel'](arg1, arg2);
 }
 
+export function OnFileDrop(arg1) {
+  return window['go']['main']['App']['OnFileDrop'](arg1);
+}
+
 export function SelectAudioFile() {
   return window['go']['main']['App']['SelectAudioFile']();
 }
