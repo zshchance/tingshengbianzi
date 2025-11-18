@@ -403,17 +403,40 @@ func (tm *TemplateManager) LoadTemplates(configPath string) error {
 
 // GetTemplate 获取指定模板
 func (tm *TemplateManager) GetTemplate(templateKey string) (AIPromptTemplate, bool) {
+	fmt.Printf("🔍 GetTemplate: 请求获取模板 '%s'\n", templateKey)
+
 	tm.mutex.RLock()
 	defer tm.mutex.RUnlock()
 
+	fmt.Printf("📊 GetTemplate: 模板管理器状态 - 已加载: %t, 模板总数: %d\n", tm.loaded, len(tm.templates))
+
 	if !tm.loaded {
+		fmt.Printf("🔄 GetTemplate: 模板未加载，尝试自动加载\n")
 		// 尝试自动加载
 		if err := tm.LoadTemplates(""); err != nil {
-			fmt.Printf("自动加载模板失败: %v\n", err)
+			fmt.Printf("❌ GetTemplate: 自动加载模板失败: %v\n", err)
+		} else {
+			fmt.Printf("✅ GetTemplate: 自动加载成功，模板总数: %d\n", len(tm.templates))
 		}
 	}
 
+	// 列出所有可用的模板键
+	if len(tm.templates) > 0 {
+		keys := make([]string, 0, len(tm.templates))
+		for k := range tm.templates {
+			keys = append(keys, k)
+		}
+		fmt.Printf("📋 GetTemplate: 当前可用模板键: %v\n", keys)
+	}
+
 	template, exists := tm.templates[templateKey]
+	fmt.Printf("🎯 GetTemplate: 模板 '%s' 查找结果: %t\n", templateKey, exists)
+
+	if exists {
+		fmt.Printf("✅ GetTemplate: 找到模板 - 名称: %s, 描述: %s, 长度: %d\n",
+			template.Name, template.Description, len(template.Template))
+	}
+
 	return template, exists
 }
 
@@ -479,28 +502,71 @@ func (tm *TemplateManager) GetAvailableTemplateKeys() []string {
 // FormatAIPrompt 根据模板类型格式化AI优化提示词
 func FormatAIPrompt(result *models.RecognitionResult, templateKey string) string {
 	if result == nil {
+		fmt.Printf("🚨 FormatAIPrompt: 识别结果为nil\n")
 		return ""
 	}
+
+	fmt.Printf("🔧 FormatAIPrompt: 开始处理模板请求\n")
+	fmt.Printf("📝 请求的模板类型: %s\n", templateKey)
+	fmt.Printf("📄 识别文本长度: %d 字符\n", len(result.Text))
+	fmt.Printf("📊 识别结果段落数: %d\n", len(result.Segments))
 
 	// 如果没有指定模板，使用默认模板
 	if templateKey == "" {
 		templateKey = "basic" // 默认使用基础模板
+		fmt.Printf("🔄 模板类型为空，使用默认模板: %s\n", templateKey)
 	}
+
+	// 获取模板管理器状态
+	templateManager := GetTemplateManager()
+	availableKeys := templateManager.GetAvailableTemplateKeys()
+	fmt.Printf("📚 可用模板列表: %v\n", availableKeys)
+	fmt.Printf("🎯 当前默认模板: %s\n", templateManager.defaultTemplate)
+	fmt.Printf("✅ 模板管理器已加载: %t\n", templateManager.loaded)
 
 	// 获取模板
 	template, exists := templateManager.GetTemplate(templateKey)
+	fmt.Printf("🔍 模板查找结果 - 存在: %t\n", exists)
+
 	if !exists {
+		fmt.Printf("⚠️  指定模板 '%s' 不存在，尝试获取默认模板\n", templateKey)
 		// 如果指定模板不存在，尝试获取默认模板
 		defaultTemplate, hasDefault := templateManager.GetDefaultTemplate()
+		fmt.Printf("🔍 默认模板查找结果 - 存在: %t\n", hasDefault)
+
 		if !hasDefault {
+			fmt.Printf("❌ 默认模板也不存在，使用硬编码备用模板\n")
 			// 如果默认模板也不存在，使用硬编码的备用模板
 			return getFallbackPrompt(result.Text)
 		}
 		template = defaultTemplate
+		fmt.Printf("✅ 使用默认模板: %s\n", template.Name)
+	} else {
+		fmt.Printf("✅ 成功获取指定模板: %s (%s)\n", template.Name, template.Description)
+	}
+
+	// 输出模板信息
+	fmt.Printf("📋 模板名称: %s\n", template.Name)
+	fmt.Printf("📝 模板描述: %s\n", template.Description)
+	fmt.Printf("📏 模板长度: %d 字符\n", len(template.Template))
+
+	// 检查模板是否包含占位符
+	if strings.Contains(template.Template, "【RECOGNITION_TEXT】") {
+		fmt.Printf("✅ 模板包含正确的占位符: 【RECOGNITION_TEXT】\n")
+	} else {
+		fmt.Printf("⚠️  模板不包含占位符: 【RECOGNITION_TEXT】\n")
 	}
 
 	// 替换占位符
 	formattedText := strings.ReplaceAll(template.Template, "【RECOGNITION_TEXT】", result.Text)
+	fmt.Printf("🔄 占位符替换完成，最终提示词长度: %d 字符\n", len(formattedText))
+
+	// 输出最终提示词的前200个字符用于调试
+	if len(formattedText) > 200 {
+		fmt.Printf("📄 最终提示词预览: %s...\n", formattedText[:200])
+	} else {
+		fmt.Printf("📄 最终提示词: %s\n", formattedText)
+	}
 
 	return formattedText
 }

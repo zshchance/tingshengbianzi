@@ -154,6 +154,7 @@ const {
   stopRecognition: wailsStopRecognition,
   selectAudioFile: wailsSelectAudioFile,
   getRecognitionStatus,
+  formatAIText,
   initialize: initializeWails,
   isLoading: wailsLoading
 } = useWails()
@@ -952,14 +953,41 @@ const setupGlobalWailsEvents = () => {
           const preprocessedText = preprocessText(response.result.timestampedText)
           console.log('🧹 文本预处理完成')
 
-          // 生成AI优化提示词
-          const aiPrompt = generateAIOptimizationPrompt(preprocessedText, {
-            includeBasicOptimization: true,
-            includeMarkerProcessing: true,
-            includeContentOptimization: true,
-            preserveTimestamps: true,
-            customRequirements: '请特别注意保持时间戳的完整性，这是字幕制作的关键信息。'
-          })
+          // 使用后端模板系统生成AI优化提示词
+          let aiPrompt
+          try {
+            // 构建一个临时的RecognitionResult对象用于调用后端API
+            const tempRecognitionResult = {
+              ...response.result,
+              text: preprocessedText // 使用预处理后的文本
+            }
+
+            console.log('🔧 使用AI模板类型:', settings.aiTemplate || 'basic')
+
+            // 调用后端API生成AI优化提示词
+            const aiResult = await formatAIText(
+              JSON.stringify(tempRecognitionResult),
+              settings.aiTemplate || 'basic' // 从用户设置中获取模板类型，默认为basic
+            )
+
+            if (aiResult.success) {
+              aiPrompt = aiResult.prompt
+              console.log('💡 后端AI优化提示词生成完成，长度:', aiPrompt.length)
+            } else {
+              throw new Error('后端AI提示词生成失败: ' + aiResult.error)
+            }
+          } catch (error) {
+            console.warn('🔄 后端AI模板系统调用失败，回退到前端模板:', error.message)
+            // 回退到前端的generateAIOptimizationPrompt函数
+            aiPrompt = generateAIOptimizationPrompt(preprocessedText, {
+              includeBasicOptimization: true,
+              includeMarkerProcessing: true,
+              includeContentOptimization: true,
+              preserveTimestamps: true,
+              customRequirements: '请特别注意保持时间戳的完整性，这是字幕制作的关键信息。'
+            })
+            console.log('💡 前端回退AI优化提示词生成完成，长度:', aiPrompt.length)
+          }
           console.log('💡 AI优化提示词生成完成，长度:', aiPrompt.length)
 
           // 记录AI优化过程到控制台

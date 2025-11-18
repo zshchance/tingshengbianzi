@@ -1159,22 +1159,60 @@ func (a *App) GetAITemplates() map[string]interface{} {
 
 // FormatAIText 使用指定模板格式化AI文本
 func (a *App) FormatAIText(recognitionResultJSON, templateKey string) map[string]interface{} {
+	fmt.Printf("🚀 App.FormatAIText: 开始处理AI文本格式化请求\n")
+	fmt.Printf("📝 请求的模板类型: '%s'\n", templateKey)
+	fmt.Printf("📄 接收到的JSON数据长度: %d 字符\n", len(recognitionResultJSON))
+
 	// 解析识别结果
 	var result models.RecognitionResult
 	if err := json.Unmarshal([]byte(recognitionResultJSON), &result); err != nil {
+		fmt.Printf("❌ App.FormatAIText: JSON解析失败: %v\n", err)
 		return map[string]interface{}{
 			"success": false,
 			"error":   fmt.Sprintf("识别结果解析失败: %v", err),
 		}
 	}
 
+	fmt.Printf("✅ App.FormatAIText: JSON解析成功\n")
+	fmt.Printf("📊 解析后的识别结果:\n")
+	fmt.Printf("   - 文本长度: %d 字符\n", len(result.Text))
+	fmt.Printf("   - 段落数量: %d\n", len(result.Segments))
+	fmt.Printf("   - 词汇数量: %d\n", len(result.Words))
+
+	// 如果文本不为空，显示前100个字符作为预览
+	if len(result.Text) > 0 {
+		preview := result.Text
+		if len(preview) > 100 {
+			preview = preview[:100]
+		}
+		fmt.Printf("   - 文本预览: %s...\n", preview)
+	}
+
 	// 使用模板格式化提示词
+	fmt.Printf("🔧 App.FormatAIText: 调用utils.FormatAIPrompt\n")
 	formattedPrompt := utils.FormatAIPrompt(&result, templateKey)
 
-	return map[string]interface{}{
+	fmt.Printf("✅ App.FormatAIText: 格式化完成，返回提示词长度: %d 字符\n", len(formattedPrompt))
+
+	resultMap := map[string]interface{}{
 		"success": true,
 		"prompt":  formattedPrompt,
 	}
+
+	// 输出返回结果的键和长度信息
+	fmt.Printf("📤 App.FormatAIText: 返回结果包含键: %v\n", getMapKeys(resultMap))
+	fmt.Printf("🎯 App.FormatAIText: 处理完成\n")
+
+	return resultMap
+}
+
+// getMapKeys 获取map的所有键（用于调试）
+func getMapKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // GetTemplateManagerInfo 获取模板管理器信息

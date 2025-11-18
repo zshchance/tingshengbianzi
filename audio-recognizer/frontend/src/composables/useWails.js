@@ -360,6 +360,32 @@ export function useWails() {
   }
 
   /**
+   * 格式化AI优化文本
+   */
+  const formatAIText = async (recognitionResultJSON, templateKey) => {
+    try {
+      isLoading.value = true
+      console.log('🤖 调用后端FormatAIText，模板类型:', templateKey)
+
+      const result = await App.FormatAIText(recognitionResultJSON, templateKey)
+      console.log('🤖 后端FormatAIText返回结果:', result)
+
+      if (result.success) {
+        return result
+      } else {
+        throw new Error(result.error || 'AI文本格式化失败')
+      }
+
+    } catch (error) {
+      console.error('AI文本格式化失败:', error)
+      toastStore.showError('AI文本格式化失败', error.message)
+      throw error
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  /**
    * 初始化Wails连接
    */
   const initialize = async () => {
@@ -410,6 +436,7 @@ export function useWails() {
     getConfig,
     updateConfig,
     exportResult,
+    formatAIText,
     initialize,
     isWailsAvailable,
     cleanupEventListeners
