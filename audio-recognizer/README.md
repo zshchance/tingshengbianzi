@@ -1,44 +1,73 @@
-# Audio Recognizer - 智能音频识别应用
+# 听声辨字 - 智能音频识别工具
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Go Version](https://img.shields.io/badge/go-%3E%3D1.21-blue.svg)
+![Go Version](https://img.shields.io/badge/go-%3E%3D1.23-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
+![Version](https://img.shields.io/badge/version-2.0.0-green.svg)
 
-一个基于Go语言和Whisper引擎的跨平台音频识别桌面应用，支持多种音频格式识别，生成带时间标记的文本结果，并提供AI优化功能。
+一个基于Go语言、Wails v2和Whisper引擎的跨平台桌面音频识别应用，支持多种音频格式识别，生成精确时间戳的文本结果，并提供强大的AI文本优化功能。
 
-## ✨ 功能特性
+## ✨ 核心特性
 
-- 🎵 **多格式音频支持** - 支持MP3、WAV、M4A、FLAC等常见音频格式
-- 🎤 **离线语音识别** - 基于Whisper引擎，高精度识别，无需网络连接
-- 🕐 **精确时间标记** - 生成毫秒级精确的时间戳
-- 🌍 **多语言支持** - 支持中文、英文等多种语言识别
-- ✨ **AI文本优化** - 提供智能文本优化提示词
-- 💻 **跨平台运行** - 支持Windows、macOS、Linux三大平台
-- 🎨 **现代UI设计** - 简洁直观的用户界面
-- 📦 **单文件部署** - 打包后无需额外依赖
+### 🎵 音频处理
+- **多格式支持** - 支持 MP3、WAV、M4A、AAC、OGG、FLAC 等主流音频格式
+- **拖拽操作** - 原生文件拖拽支持，点击文件框任意区域选择文件
+- **智能验证** - 自动音频格式验证和文件大小限制（最大100MB）
+- **实时时长计算** - 精确计算音频时长，支持多种估算方法
 
-## 🛠️ 技术栈
+### 🎤 语音识别
+- **Whisper引擎** - 基于OpenAI Whisper.cpp，高精度离线语音识别
+- **多模型支持** - 支持Tiny、Base、Small、Large、Large-v3-turbo等多种Whisper模型
+- **多语言识别** - 支持中文、英文等多种语言，可切换识别语言
+- **时间戳精度** - 提供词汇级精确时间戳，支持细颗粒度时间标记
+- **智能去重** - 自动去除重复识别内容，优化长音频识别结果
 
-- **后端框架**: Wails v2 (Go + Web技术)
+### 🤖 AI文本优化
+- **模板系统** - 内置多种AI优化模板，支持自定义提示词
+- **智能处理** - 自动文本预处理和质量报告生成
+- **实时优化** - 提供可复制的AI优化提示词，支持外部AI工具集成
+- **多模板切换** - 基础优化、字幕制作、会议记录等专业模板
+
+### 💻 用户界面
+- **现代Vue.js架构** - 基于Vue.js 3 + Vite + Pinia的现代前端架构
+- **响应式设计** - 适配不同屏幕尺寸，支持深色/浅色主题
+- **实时进度** - 详细的识别进度显示，包含时间和状态信息
+- **拖拽交互** - 友好的文件拖拽界面，支持点击任意区域选择文件
+
+## 🛠️ 技术架构
+
+### 后端技术栈
+- **核心框架**: Wails v2.11.0 (Go + Web技术)
 - **语音识别**: Whisper.cpp API
-- **音频处理**: FFmpeg + go-audio
-- **前端技术**: HTML5 + CSS3 + JavaScript + Vite
-- **构建工具**: Go Modules + npm
-- **跨平台**: CGO + 原生UI组件
+- **音频处理**: FFmpeg + 原生音频处理
+- **模型管理**: 动态模型加载和配置管理
+- **配置系统**: JSON配置文件 + 实时同步
+
+### 前端技术栈
+- **框架**: Vue.js 3.3.0 + Composition API
+- **构建工具**: Vite 5.0
+- **状态管理**: Pinia 2.1.0
+- **组件化**: 模块化Vue组件设计
+- **样式系统**: CSS变量 + 响应式设计
+
+### 关键组件
+- **FileDropZone** - 文件拖拽和选择组件
+- **ProgressBar** - 实时进度显示组件
+- **ResultDisplay** - 结果展示和导出组件
+- **SettingsModal** - 配置管理组件
 
 ## 📋 系统要求
 
 ### 开发环境
-- Go 1.21 或更高版本
-- Node.js 16.0 或更高版本
-- npm 8.0 或更高版本
-- FFmpeg 4.0 或更高版本
-- Git
+- **Go**: 1.23 或更高版本
+- **Node.js**: 16.0 或更高版本
+- **npm**: 8.0 或更高版本
+- **FFmpeg**: 4.0 或更高版本（支持音频格式转换）
 
 ### 运行环境
-- Windows 10+ / macOS 10.15+ / Linux (Ubuntu 18.04+)
-- 4GB RAM 或更高
-- 1GB 磁盘空间
+- **操作系统**: Windows 10+ / macOS 10.15+ / Linux (Ubuntu 18.04+)
+- **内存**: 4GB RAM 或更高（推荐8GB+）
+- **存储**: 1GB 磁盘空间（包含Whisper模型）
 
 ## 🚀 快速开始
 
@@ -48,7 +77,7 @@ git clone <repository-url>
 cd audio-recognizer
 ```
 
-### 2. 安装依赖
+### 2. 环境安装
 
 #### macOS系统
 ```bash
@@ -66,12 +95,12 @@ export PATH=$PATH:~/go/bin
 #### Ubuntu/Debian系统
 ```bash
 # 安装Go
-wget https://go.dev/dl/go1.21.0.linux-amd64.tar.gz
-sudo tar -C /usr/local -xzf go1.21.0.linux-amd64.tar.gz
+wget https://go.dev/dl/go1.23.0.linux-amd64.tar.gz
+sudo tar -C /usr/local -xzf go1.23.0.linux-amd64.tar.gz
 export PATH=$PATH:/usr/local/go/bin
 
 # 安装Node.js
-curl -fsSL https://deb.nodesource.com/setup_16.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
 sudo apt-get install -y nodejs
 
 # 安装FFmpeg
@@ -88,48 +117,48 @@ export PATH=$PATH:~/go/bin
 # 使用Chocolatey安装依赖
 choco install golang nodejs ffmpeg
 
-# 或使用winget
-winget install GoLang.Go
-winget install OpenJS.NodeJS
-winget install Gyan.FFmpeg
-
 # 安装Wails CLI
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
 ```
 
-### 3. 下载语音模型
+### 3. 下载Whisper模型
 ```bash
-# 自动下载Whisper语音识别模型
-./scripts/download-whisper-models.sh
+# 推荐使用自动下载脚本
+./scripts/download-models.sh
 
 # 或手动下载Base模型（推荐）
 mkdir -p models/whisper
 curl -L https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin -o models/whisper/ggml-base.bin
+
+# Large-v3-turbo模型（最新推荐）
+curl -L https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin -o models/whisper/ggml-large-v3-turbo.bin
 ```
 
 ### 4. 启动开发环境
 ```bash
 # 启动开发服务器（支持热重载）
-./start-dev.sh
-
-# 或直接使用Wails命令
+export PATH=$PATH:~/go/bin
 wails dev
+
+# 或使用便捷脚本
+./start-dev.sh
 ```
 
-开发服务器启动后，应用将自动打开，支持：
-- 🔥 热重载 - 代码修改后自动刷新
-- 🐛 调试模式 - 内置开发者工具
-- 📝 实时日志 - 控制台显示详细日志
+开发服务器特性：
+- 🔥 **热重载** - 代码修改后自动刷新
+- 🐛 **调试模式** - 内置开发者工具
+- 📝 **实时日志** - 浏览器控制台显示详细日志
+- 🎨 **实时预览** - UI更改即时生效
 
-## 🏗️ 构建与发布
+## 🏗️ 构建与部署
 
 ### 开发构建
 ```bash
 # 构建调试版本
 wails build -debug
 
-# 使用构建脚本（推荐）
-./scripts/build.sh
+# 使用图标优化的构建脚本
+./scripts/build-with-icons.sh
 ```
 
 ### 生产构建
@@ -137,149 +166,185 @@ wails build -debug
 # 构建生产版本
 wails build -production
 
-# 使用构建脚本（包含完整流程）
-./scripts/build.sh
+# 跨平台构建
+wails build -platform darwin/amd64 -production    # macOS Intel
+wails build -platform darwin/arm64 -production    # macOS Apple Silicon
+wails build -platform windows/amd64 -production   # Windows
+wails build -platform linux/amd64 -production     # Linux
 ```
 
-### 跨平台构建
-
-#### macOS构建
+### 图标管理
 ```bash
-# 构建macOS应用
-wails build -platform darwin/amd64 -production
-wails build -platform darwin/arm64 -production
+# 生成多平台图标
+./scripts/generate-icons.sh
 
-# 创建DMG安装包
-./scripts/build-macos.sh
+# 修复开发模式图标
+./scripts/fix-dev-icon.sh
 ```
 
-#### Windows构建
-```bash
-# 构建Windows应用
-wails build -platform windows/amd64 -production
-
-# 创建安装程序
-./scripts/build-windows.sh
-```
-
-#### Linux构建
-```bash
-# 构建Linux应用
-wails build -platform linux/amd64 -production
-
-# 创建AppImage
-./scripts/build-linux.sh
-```
-
-## 📦 发布包结构
-
-### 最终发布目录结构
-```
-audio-recognizer-v1.0.0/
-├── audio-recognizer.exe              # Windows可执行文件
-├── audio-recognizer.app              # macOS应用包
-├── audio-recognizer                  # Linux可执行文件
-├── models/                           # 语音识别模型
-│   └── whisper/                      # Whisper模型目录
-│       ├── ggml-base.bin             # Base模型（推荐）
-│       ├── ggml-small.bin            # Small模型
-│       └── ggml-large.bin            # Large模型（可选）
-├── config/                          # 配置文件
-│   ├── default.json                 # 默认配置
-│   ├── languages.json               # 语言配置
-│   └── templates.json               # AI优化模板
-├── start.sh                         # Linux/macOS启动脚本
-├── start.bat                        # Windows启动脚本
-├── download-whisper-models.sh       # Whisper模型下载脚本
-├── README.md                        # 用户手册
-└── license.txt                      # 许可证文件
-```
-
-### 用户安装说明
-1. **解压发布包**到任意目录
-2. **运行模型下载脚本**（首次使用）：
-   - Windows: 双击 `start.bat`
-   - macOS/Linux: 运行 `./start.sh`
-3. **启动应用程序**：
-   - Windows: 双击 `audio-recognizer.exe`
-   - macOS: 双击 `audio-recognizer.app`
-   - Linux: 运行 `./audio-recognizer`
-
-## 📁 项目结构详解
+## 📁 项目架构
 
 ```
 audio-recognizer/
 ├── 📁 backend/                      # 后端Go代码
 │   ├── audio/                       # 音频处理模块
+│   │   └── processor.go             # FFmpeg音频处理器
 │   ├── recognition/                 # 语音识别模块
+│   │   ├── service.go               # 识别服务接口
+│   │   ├── whisper_service.go       # Whisper实现
+│   │   └── mock_service.go          # 模拟服务
 │   ├── models/                      # 数据模型
-│   ├── services/                    # 业务服务
+│   │   ├── recognition.go           # 识别结果模型
+│   │   └── errors.go                # 错误定义
 │   └── utils/                       # 工具函数
-├── 📁 frontend/                     # 前端代码
+│       ├── ffmpeg_manager.go        # FFmpeg管理
+│       ├── time_utils.go            # 时间工具
+│       └── text_utils.go            # 文本工具
+├── 📁 frontend/                     # 前端Vue.js代码
 │   ├── src/                         # 源代码
-│   ├── components/                  # UI组件
-│   ├── css/                         # 样式文件
-│   ├── js/                          # JavaScript文件
-│   └── assets/                      # 静态资源
-├── 📁 models/                       # 语音识别模型
+│   │   ├── components/              # Vue组件
+│   │   │   ├── FileDropZone.vue     # 文件拖拽组件
+│   │   │   ├── ProgressBar.vue      # 进度条组件
+│   │   │   ├── ResultDisplay.vue    # 结果展示组件
+│   │   │   ├── SettingsModal.vue    # 设置模态框
+│   │   │   ├── ToastContainer.vue   # 通知容器
+│   │   │   └── ToastMessage.vue     # 消息提示
+│   │   ├── composables/             # Vue组合式函数
+│   │   │   ├── useAudioFile.js      # 音频文件处理
+│   │   │   ├── useWails.js          # Wails API集成
+│   │   │   ├── useSettings.js       # 设置管理
+│   │   │   └── useToast.js          # 通知管理
+│   │   ├── stores/                  # Pinia状态管理
+│   │   │   └── toast.js             # 通知存储
+│   │   ├── utils/                   # 前端工具
+│   │   │   ├── timeFormatter.js     # 时间格式化
+│   │   │   ├── fineGrainedTimestamps.js # 细粒度时间戳
+│   │   │   └── aiOptimizer.js       # AI优化工具
+│   │   ├── assets/                  # 静态资源
+│   │   │   └── icons/               # 应用图标
+│   │   ├── App.vue                  # 主应用组件
+│   │   └── main-vue.js              # 前端入口
+│   ├── index.html                   # HTML模板
+│   └── package.json                 # 前端依赖
+├── 📁 models/                       # Whisper模型文件
 ├── 📁 config/                       # 配置文件
-├── 📁 scripts/                      # 构建和工具脚本
+│   ├── user-config.json            # 用户配置
+│   └── templates.json               # AI优化模板
+├── 📁 scripts/                      # 工具脚本
+│   ├── download-models.sh           # 模型下载脚本
+│   ├── generate-icons.sh            # 图标生成脚本
+│   ├── build-with-icons.sh          # 带图标的构建脚本
+│   └── fix-dev-icon.sh              # 开发模式图标修复
 ├── 📁 tests/                        # 测试文件
-├── 📁 build/                        # 构建输出目录
-├── app.go                          # Wails应用主入口
-├── main.go                         # Go程序入口点
-├── wails.json                      # Wails配置文件
-├── start-dev.sh                    # 开发环境启动脚本
-└── README.md                       # 项目说明文档
+├── app.go                           # Wails应用主入口
+├── main.go                          # Go程序入口
+├── wails.json                       # Wails配置文件
+└── README.md                        # 项目文档
 ```
 
-## ⚙️ 配置说明
+## ⚙️ 配置系统
 
-### 应用配置 (config/default.json)
+### 用户配置 (config/user-config.json)
 ```json
 {
-  "recognition": {
-    "defaultLanguage": "zh-CN",
-    "modelDirectory": "./models",
-    "confidenceThreshold": 0.5,
-    "enableWordTimestamp": true,
-    "sampleRate": 16000
+  "language": "zh-CN",
+  "modelPath": "./models",
+  "specificModelFile": "",
+  "sampleRate": 16000,
+  "bufferSize": 4000,
+  "confidenceThreshold": 0.5,
+  "maxAlternatives": 1,
+  "enableWordTimestamp": true,
+  "enableNormalization": true,
+  "enableNoiseReduction": false,
+  "aiTemplate": "basic"
+}
+```
+
+### AI优化模板 (config/templates.json)
+```json
+{
+  "basic": {
+    "name": "基础文本优化",
+    "description": "基础文本清理和格式化",
+    "template": "请优化以下文本..."
   },
-  "audio": {
-    "normalize": true,
-    "removeNoise": false,
-    "silenceThreshold": -40
-  },
-  "ui": {
-    "theme": "light",
-    "window": {
-      "width": 1200,
-      "height": 800,
-      "resizable": true
-    }
+  "subtitle": {
+    "name": "字幕制作",
+    "description": "优化字幕格式和时间戳",
+    "template": "请将以下内容优化为字幕格式..."
   }
 }
 ```
+
+## 🎯 使用流程
+
+### 1. 音频文件选择
+- **拖拽方式**: 直接将音频文件拖拽到应用窗口
+- **点击选择**: 点击文件选择区域任意位置选择文件
+- **按钮选择**: 点击"选择文件"按钮通过对话框选择
+
+### 2. 语音识别
+- 自动检测音频格式和时长
+- 支持多种Whisper模型
+- 实时显示识别进度
+- 生成精确的时间戳
+
+### 3. 结果处理
+- **文本显示**: 显示识别文本和分段信息
+- **时间戳**: 词汇级精确时间戳
+- **导出功能**: 支持TXT、SRT、VTT、JSON格式导出
+- **AI优化**: 提供AI文本优化建议
+
+## 🔧 高级功能
+
+### 细粒度时间戳
+- 基于词汇级时间戳生成更精确的时间标记
+- 支持自定义分段长度和时间插值
+- 适用于字幕制作和精确时间定位
+
+### AI文本优化
+- 多种专业模板支持
+- 自动文本预处理和质量分析
+- 可复制优化提示词到外部AI工具
+- 支持批量文本优化
+
+### 配置管理
+- 实时配置同步
+- 用户配置持久化
+- 支持运行时配置更新
+- 模型路径和参数自定义
 
 ## 🐛 故障排除
 
 ### 常见问题
 
-#### 1. Whisper模型下载失败
+#### 1. 拖拽文件不工作
 ```bash
-# 手动下载Base模型（推荐）
-mkdir -p models/whisper
-curl -L https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin -o models/whisper/ggml-base.bin
-
-# 下载其他尺寸模型
-# Small模型 - 更快，精度稍低
-curl -L https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin -o models/whisper/ggml-small.bin
-
-# Large模型 - 更高精度，需要更多资源
-curl -L https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large.bin -o models/whisper/ggml-large.bin
+# 检查文件格式是否支持
+# 确保文件在100MB以内
+# 尝试点击文件选择区域
 ```
 
-#### 2. FFmpeg未找到
+#### 2. Whisper模型未加载
+```bash
+# 检查模型文件是否存在
+ls -la models/whisper/
+
+# 重新下载模型
+./scripts/download-models.sh
+```
+
+#### 3. 开发模式图标不显示
+```bash
+# 修复开发模式图标
+./scripts/fix-dev-icon.sh
+
+# 重新生成图标
+./scripts/generate-icons.sh
+```
+
+#### 4. FFmpeg未找到
 ```bash
 # macOS
 brew install ffmpeg
@@ -288,25 +353,28 @@ brew install ffmpeg
 sudo apt-get install ffmpeg
 
 # Windows
-# 从 https://ffmpeg.org/download.html 下载并添加到PATH
-```
-
-#### 3. 构建失败
-```bash
-# 清理缓存
-go clean -modcache
-rm -rf node_modules
-npm install
-go mod tidy
-
-# 重新构建
-wails build -clean
+# 从 https://ffmpeg.org/download.html 下载
 ```
 
 ## 📄 许可证
 
-本项目采用 MIT 许可证。
+本项目采用 MIT 许可证。软件完全免费，严禁任何商家或个人进行贩卖获利！
 
 ---
 
 **让音频识别变得简单高效！** 🎵➡️📝
+
+## 🤝 贡献指南
+
+欢迎提交Issue和Pull Request来改进项目！
+
+### 开发规范
+- 遵循Go代码规范
+- Vue.js组件使用Composition API
+- 提交前运行测试
+- 更新相关文档
+
+---
+
+**网站**: [administrator.wiki](https://administrator.wiki)
+**邮箱**: [zshchance@qq.com](mailto:zshchance@qq.com)
