@@ -1,5 +1,6 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { useToastStore } from '../stores/toast'
+import { UpdateConfig, GetConfig } from '../../wailsjs/go/main/App.js'
 
 export function useSettings() {
   const toastStore = useToastStore()
@@ -94,14 +95,56 @@ export function useSettings() {
     }
   ])
 
-  // 从localStorage加载设置
-  const loadSettings = () => {
+  // 从后端加载设置
+  const loadSettingsFromBackend = async () => {
     try {
+      console.log('🔄 从后端加载配置...')
+      const configJSON = await GetConfig()
+      if (configJSON) {
+        const backendConfig = JSON.parse(configJSON)
+        console.log('✅ 从后端加载配置成功:', backendConfig)
+
+        // 只同步后端相关的设置字段
+        settings.language = backendConfig.language || 'zh-CN'
+        settings.modelPath = backendConfig.modelPath || './models'
+        settings.specificModelFile = backendConfig.specificModelFile || ''
+        settings.sampleRate = backendConfig.sampleRate || 16000
+        settings.bufferSize = backendConfig.bufferSize || 4000
+        settings.confidenceThreshold = backendConfig.confidenceThreshold || 0.5
+        settings.maxAlternatives = backendConfig.maxAlternatives || 1
+        settings.enableWordTimestamp = backendConfig.enableWordTimestamp !== false
+        settings.enableNormalization = backendConfig.enableNormalization !== false
+        settings.enableNoiseReduction = backendConfig.enableNoiseReduction || false
+
+        console.log('✅ 后端配置已同步到前端')
+      }
+    } catch (error) {
+      console.error('❌ 从后端加载配置失败:', error)
+      toastStore.showWarning('后端配置加载失败', '使用本地设置')
+    }
+  }
+
+  // 从localStorage加载设置
+  const loadSettings = async () => {
+    try {
+      // 先从后端加载核心配置
+      await loadSettingsFromBackend()
+
+      // 然后从localStorage加载UI相关设置
       const savedSettings = localStorage.getItem('audio-recognizer-settings')
       if (savedSettings) {
         const parsed = JSON.parse(savedSettings)
-        Object.assign(settings, { ...defaultSettings, ...parsed })
+        // 只合并UI相关的设置，不要覆盖后端的核心配置
+        Object.assign(settings, {
+          theme: parsed.theme || settings.theme,
+          customModelPath: parsed.customModelPath || settings.customModelPath,
+          maxRecordingDuration: parsed.maxRecordingDuration || settings.maxRecordingDuration,
+          enableRealTimeRecognition: parsed.enableRealTimeRecognition || settings.enableRealTimeRecognition,
+          logLevel: parsed.logLevel || settings.logLevel
+        })
       }
+
+      console.log('✅ 设置加载完成:', settings)
     } catch (error) {
       console.error('加载设置失败:', error)
       toastStore.showWarning('设置加载失败', '使用默认设置')
@@ -204,14 +247,48 @@ export function useSettings() {
   // 自动保存重要设置
   watch(settings, (newSettings, oldSettings) => {
     // 只在重要设置改变时自动保存
-    const importantKeys = ['modelPath', 'specificModelFile', 'recognitionLanguage', 'enableWordTimestamp', 'confidenceThreshold']
-    const hasImportantChange = importantKeys.some(key => newSettings[key] !== oldSettings[key])
+    const importantKeys = ['modelPath', 'specificModelFile', 'recognitionLanguage', 'enableWordTimestamp', 'confidenceThreshold', 'customModelPath']
 
-    if (hasImportantChange) {
-      console.log('🔧 重要设置已更改，自动保存')
+    // 调试：显示所有变化的字段
+    const changedKeys = []
+    importantKeys.forEach(key => {
+      if (newSettings[key] !== oldSettings[key]) {
+        changedKeys.push(`${key}: "${oldSettings[key]}" -> "${newSettings[key]}"`)
+      }
+    })
+
+    if (changedKeys.length > 0) {
+      console.log('🔧 检测到重要设置变化:', changedKeys.join(', '))
+      console.log('🔧 重要设置已更改，自动保存到后端')
       // 延迟保存，避免频繁保存
-      setTimeout(() => {
-        saveSettings()
+      setTimeout(async () => {
+        try {
+          // 构建后端配置对象
+          const backendConfig = {
+            language: newSettings.recognitionLanguage || 'zh-CN',
+            modelPath: newSettings.modelPath || './models',
+            specificModelFile: newSettings.specificModelFile || '',
+            sampleRate: newSettings.sampleRate || 16000,
+            bufferSize: newSettings.bufferSize || 4000,
+            confidenceThreshold: newSettings.confidenceThreshold || 0.5,
+            maxAlternatives: newSettings.maxAlternatives || 1,
+            enableWordTimestamp: newSettings.enableWordTimestamp !== false,
+            enableNormalization: newSettings.enableNormalization !== false,
+            enableNoiseReduction: newSettings.enableNoiseReduction || false
+          }
+
+          const result = await UpdateConfig(JSON.stringify(backendConfig))
+          if (result.success) {
+            console.log('✅ 配置已保存到后端')
+          } else {
+            console.error('❌ 后端配置保存失败:', result.error?.message)
+          }
+        } catch (error) {
+          console.error('❌ 调用后端配置保存失败:', error)
+        }
+
+        // 同时保存到localStorage
+        await saveSettings()
       }, 500)
     }
   }, { deep: true })

@@ -364,6 +364,7 @@
 import { ref, onMounted, watch } from 'vue'
 import { useSettings } from '../composables/useSettings'
 import { useToastStore } from '../stores/toast'
+import { UpdateConfig } from '../../wailsjs/go/main/App.js'
 
 const props = defineProps({
   visible: {
@@ -560,6 +561,31 @@ const selectModel = async (model) => {
     try {
       await saveSettings()
       console.log('✅ 模型选择已保存:', model.name)
+
+      // 确保后端配置也更新
+      try {
+        const backendConfig = {
+          language: settings.recognitionLanguage || 'zh-CN',
+          modelPath: settings.modelPath || './models',
+          specificModelFile: settings.specificModelFile || '',
+          sampleRate: settings.sampleRate || 16000,
+          bufferSize: settings.bufferSize || 4000,
+          confidenceThreshold: settings.confidenceThreshold || 0.5,
+          maxAlternatives: settings.maxAlternatives || 1,
+          enableWordTimestamp: settings.enableWordTimestamp !== false,
+          enableNormalization: settings.enableNormalization !== false,
+          enableNoiseReduction: settings.enableNoiseReduction || false
+        }
+
+        const result = await UpdateConfig(JSON.stringify(backendConfig))
+        if (result.success) {
+          console.log('✅ 模型配置已同步到后端')
+        } else {
+          console.error('❌ 后端模型配置更新失败:', result.error?.message)
+        }
+      } catch (backendError) {
+        console.error('❌ 调用后端模型配置更新失败:', backendError)
+      }
 
       toastStore.showSuccess(
         '模型选择成功',

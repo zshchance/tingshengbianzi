@@ -74,14 +74,16 @@ type AudioFile struct {
 
 // RecognitionConfig 识别配置
 type RecognitionConfig struct {
-	Language           string  `json:"language"`            // 识别语言
-	ModelPath          string  `json:"modelPath"`           // 模型路径
-	SpecificModelFile  string  `json:"specificModelFile"`  // 具体指定的模型文件
-	SampleRate         int     `json:"sampleRate"`          // 采样率
-	BufferSize         int     `json:"bufferSize"`          // 缓冲区大小
-	ConfidenceThreshold float64 `json:"confidenceThreshold"` // 置信度阈值
-	MaxAlternatives    int     `json:"maxAlternatives"`     // 最大候选数
-	EnableWordTimestamp bool   `json:"enableWordTimestamp"` // 启用词汇时间戳
+	Language              string  `json:"language"`              // 识别语言
+	ModelPath             string  `json:"modelPath"`             // 模型路径
+	SpecificModelFile     string  `json:"specificModelFile"`     // 具体指定的模型文件
+	SampleRate            int     `json:"sampleRate"`            // 采样率
+	BufferSize            int     `json:"bufferSize"`            // 缓冲区大小
+	ConfidenceThreshold   float64 `json:"confidenceThreshold"`   // 置信度阈值
+	MaxAlternatives       int     `json:"maxAlternatives"`       // 最大候选数
+	EnableWordTimestamp   bool    `json:"enableWordTimestamp"`   // 启用词汇时间戳
+	EnableNormalization   bool    `json:"enableNormalization"`   // 启用音频归一化
+	EnableNoiseReduction  bool    `json:"enableNoiseReduction"`  // 启用噪声抑制
 }
 
 // ExportFormat 导出格式

@@ -1,0 +1,12 @@
+{
+  "language": "zh-CN",
+  "modelPath": "/Users/zsh/Downloads",
+  "specificModelFile": "/Users/zsh/Downloads/ggml-large-v3-turbo-q8_0.bin",
+  "sampleRate": 16000,
+  "bufferSize": 4000,
+  "confidenceThreshold": 0.5,
+  "maxAlternatives": 1,
+  "enableWordTimestamp": true,
+  "enableNormalization": true,
+  "enableNoiseReduction": false
+}

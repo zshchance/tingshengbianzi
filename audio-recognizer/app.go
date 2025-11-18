@@ -66,24 +66,119 @@ func (a *App) initializeVoskService() error {
 	return nil
 }
 
-// loadDefaultConfig 加载默认配置
-func loadDefaultConfig() *models.RecognitionConfig {
-	// 获取可执行文件所在目录
+// getAppRootDirectory 获取应用根目录
+func getAppRootDirectory() string {
+	// 首先尝试获取可执行文件所在目录
 	exePath, err := os.Executable()
 	if err != nil {
 		exePath = "."
 	}
 	exeDir := filepath.Dir(exePath)
 
-	return &models.RecognitionConfig{
-		Language:            "zh-CN",
-		ModelPath:           filepath.Join(exeDir, "models"),
-		SampleRate:          16000,
-		BufferSize:          4000,
-		ConfidenceThreshold: 0.5,
-		MaxAlternatives:     1,
-			EnableWordTimestamp: true,
+	// 检查是否在 Wails 开发环境的 .app 包中
+	if strings.Contains(exeDir, ".app/Contents/MacOS") {
+		// 在 .app 包中，需要向上找到项目根目录
+		searchDir := exeDir
+		for i := 0; i < 10; i++ { // 最多向上查找10级
+			// 检查是否有项目标志文件
+			projectFiles := []string{"wails.json", "go.mod", "main.go"}
+			for _, marker := range projectFiles {
+				if _, err := os.Stat(filepath.Join(searchDir, marker)); err == nil {
+					fmt.Printf("🎯 检测到项目根目录: %s\n", searchDir)
+					return searchDir
+				}
+			}
+
+			// 如果到了 build 目录，再向上找一级
+			if filepath.Base(searchDir) == "build" {
+				searchDir = filepath.Dir(searchDir)
+				continue
+			}
+
+			searchDir = filepath.Dir(searchDir)
+		}
 	}
+
+	// 检查是否在临时构建目录中
+	if filepath.Base(exeDir) == "build" || filepath.Base(exeDir) == "tmp" {
+		// 尝试查找项目根目录的标志文件
+		projectFiles := []string{"wails.json", "go.mod", "main.go"}
+
+		// 从当前目录向上查找
+		searchDir := exeDir
+		for i := 0; i < 5; i++ { // 最多向上查找5级
+			for _, marker := range projectFiles {
+				if _, err := os.Stat(filepath.Join(searchDir, marker)); err == nil {
+					fmt.Printf("🎯 检测到项目根目录: %s\n", searchDir)
+					return searchDir
+				}
+			}
+			searchDir = filepath.Dir(searchDir)
+		}
+	}
+
+	// 如果都没找到，检查当前目录是否已经是项目根目录
+	projectFiles := []string{"wails.json", "go.mod", "main.go"}
+	for _, marker := range projectFiles {
+		if _, err := os.Stat(filepath.Join(exeDir, marker)); err == nil {
+			fmt.Printf("🎯 当前目录就是项目根目录: %s\n", exeDir)
+			return exeDir
+		}
+	}
+
+	fmt.Printf("📁 使用可执行文件目录: %s\n", exeDir)
+	return exeDir
+}
+
+// loadDefaultConfig 加载默认配置
+func loadDefaultConfig() *models.RecognitionConfig {
+	// 获取应用根目录
+	appRoot := getAppRootDirectory()
+
+	// 创建默认配置
+	defaultConfig := &models.RecognitionConfig{
+		Language:              "zh-CN",
+		ModelPath:             filepath.Join(appRoot, "models"),
+		SpecificModelFile:     "", // 用户指定的具体模型文件
+		SampleRate:            16000,
+		BufferSize:            4000,
+		ConfidenceThreshold:   0.5,
+		MaxAlternatives:       1,
+		EnableWordTimestamp:   true,
+		EnableNormalization:   true,
+		EnableNoiseReduction:  false,
+	}
+
+	// 尝试加载用户配置文件
+	configDir := filepath.Join(appRoot, "config")
+	configFile := filepath.Join(configDir, "user-config.json")
+
+	fmt.Printf("📂 配置文件路径: %s\n", configFile)
+
+	if configData, err := os.ReadFile(configFile); err == nil {
+		var userConfig models.RecognitionConfig
+		if json.Unmarshal(configData, &userConfig) == nil {
+			// 合并用户配置（保留默认值，用户配置覆盖相应字段）
+			defaultConfig.Language = userConfig.Language
+			defaultConfig.ModelPath = userConfig.ModelPath
+			defaultConfig.SpecificModelFile = userConfig.SpecificModelFile
+			defaultConfig.SampleRate = userConfig.SampleRate
+			defaultConfig.BufferSize = userConfig.BufferSize
+			defaultConfig.ConfidenceThreshold = userConfig.ConfidenceThreshold
+			defaultConfig.MaxAlternatives = userConfig.MaxAlternatives
+			defaultConfig.EnableWordTimestamp = userConfig.EnableWordTimestamp
+			defaultConfig.EnableNormalization = userConfig.EnableNormalization
+			defaultConfig.EnableNoiseReduction = userConfig.EnableNoiseReduction
+
+			fmt.Printf("✅ 已加载用户配置文件: %s\n", configFile)
+		} else {
+			fmt.Printf("⚠️ 配置文件格式错误，使用默认配置: %s\n", configFile)
+		}
+	} else {
+		fmt.Printf("ℹ️ 未找到用户配置文件，使用默认配置\n")
+	}
+
+	return defaultConfig
 }
 
 // RecognitionRequest 识别请求
@@ -287,8 +382,12 @@ func (a *App) GetRecognitionStatus() map[string]interface{} {
 
 // UpdateConfig 更新识别配置
 func (a *App) UpdateConfig(configJSON string) RecognitionResponse {
+	fmt.Printf("🔧 收到配置更新请求，JSON长度: %d\n", len(configJSON))
+	fmt.Printf("📄 配置内容: %s\n", configJSON)
+
 	var config models.RecognitionConfig
 	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
+		fmt.Printf("❌ 配置解析失败: %v\n", err)
 		return RecognitionResponse{
 			Success: false,
 			Error: models.NewRecognitionError(
@@ -299,19 +398,58 @@ func (a *App) UpdateConfig(configJSON string) RecognitionResponse {
 		}
 	}
 
-	// 更新配置
+	fmt.Printf("✅ 配置解析成功: 语言=%s, 模型路径=%s, 特定模型=%s\n",
+		config.Language, config.ModelPath, config.SpecificModelFile)
+
+	// 保存配置到文件
+	if err := a.saveConfigToFile(&config); err != nil {
+		fmt.Printf("⚠️ 配置保存失败: %v\n", err)
+		// 不阻止配置更新，但记录警告
+	} else {
+		fmt.Printf("✅ 配置已成功保存到文件\n")
+	}
+
+	// 更新内存中的配置
 	a.mu.Lock()
 	a.config = &config
 	a.mu.Unlock()
 
-	// 更新Vosk服务配置
+	// 更新识别服务配置
 	if a.recognitionService != nil {
 		a.recognitionService.UpdateConfig(&config)
 	}
 
+	fmt.Printf("✅ 配置已更新并保存\n")
+
 	return RecognitionResponse{
 		Success: true,
 	}
+}
+
+// saveConfigToFile 保存配置到文件
+func (a *App) saveConfigToFile(config *models.RecognitionConfig) error {
+	// 获取应用根目录
+	appRoot := getAppRootDirectory()
+
+	// 确保配置目录存在
+	configDir := filepath.Join(appRoot, "config")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("创建配置目录失败: %v", err)
+	}
+
+	// 保存配置文件
+	configFile := filepath.Join(configDir, "user-config.json")
+	configData, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化配置失败: %v", err)
+	}
+
+	if err := os.WriteFile(configFile, configData, 0644); err != nil {
+		return fmt.Errorf("写入配置文件失败: %v", err)
+	}
+
+	fmt.Printf("✅ 配置已保存到: %s\n", configFile)
+	return nil
 }
 
 // GetConfig 获取当前配置
