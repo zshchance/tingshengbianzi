@@ -3,6 +3,7 @@
  * 负责语音识别的状态管理、结果处理、导出功能等
  */
 import {StartRecognition, StopRecognition, GetRecognitionStatus, ExportResult} from '../../wailsjs/go/main/App.js';
+import { generateTimestampedText } from '../utils/timeFormatter.js';
 
 export class RecognitionManager {
     constructor() {
@@ -409,8 +410,8 @@ ${result.text}
 
             switch (type) {
                 case 'original':
-                    // 使用UIController的方法生成带时间戳的纯文本
-                    content = this.uiController.generateOriginalTextWithTimestamps(this.currentResult) || '';
+                    // 使用timeFormatter工具生成带时间戳的纯文本
+                    content = generateTimestampedText(this.currentResult.segments) || this.currentResult.text || '';
                     break;
                 case 'ai':
                     content = this.generateAIOptimizedPrompt(this.currentResult);

@@ -14,6 +14,7 @@ import (
 	"audio-recognizer/backend/models"
 	"audio-recognizer/backend/recognition"
 	"audio-recognizer/backend/audio"
+	"audio-recognizer/backend/utils"
 )
 
 // App struct
@@ -40,10 +41,34 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
-	// 初始化Vosk服务
+	// 初始化AI提示词模板系统
+	if err := a.initializeTemplates(); err != nil {
+		fmt.Printf("初始化AI模板系统失败: %v\n", err)
+	}
+
+	// 初始化语音识别服务
 	if err := a.initializeVoskService(); err != nil {
 		fmt.Printf("初始化Vosk服务失败: %v\n", err)
 	}
+}
+
+// initializeTemplates 初始化AI提示词模板系统
+func (a *App) initializeTemplates() error {
+	// 获取应用根目录
+	appRoot := getAppRootDirectory()
+
+	// 设置模板配置文件路径
+	templatePath := filepath.Join(appRoot, "config", "templates.json")
+
+	// 初始化模板系统
+	if err := utils.InitializeTemplates(templatePath); err != nil {
+		fmt.Printf("加载AI模板配置失败: %v，将使用硬编码模板\n", err)
+		// 不返回错误，允许应用继续运行
+		return nil
+	}
+
+	fmt.Printf("✅ AI模板系统初始化成功\n")
+	return nil
 }
 
 // initializeVoskService 初始化语音识别服务
@@ -1099,6 +1124,70 @@ func (a *App) estimateDurationFromSize(fileSize int64, ext string) float64 {
 	return estimatedDuration
 }
 
+
+// GetAITemplates 获取所有可用的AI提示词模板
+func (a *App) GetAITemplates() map[string]interface{} {
+	templateManager := utils.GetTemplateManager()
+	templates := templateManager.GetAllTemplates()
+
+	// 转换为前端友好的格式
+	result := make(map[string]interface{})
+	for key, template := range templates {
+		result[key] = map[string]interface{}{
+			"name":        template.Name,
+			"description": template.Description,
+			"template":    template.Template,
+		}
+	}
+
+	return map[string]interface{}{
+		"success":  true,
+		"templates": result,
+		"default":  func() string {
+			if defaultTemplate, exists := templateManager.GetDefaultTemplate(); exists {
+				// 找到默认模板的键
+				for key, tmpl := range templates {
+					if tmpl.Name == defaultTemplate.Name && tmpl.Description == defaultTemplate.Description {
+						return key
+					}
+				}
+			}
+			return "basic"
+		}(),
+	}
+}
+
+// FormatAIText 使用指定模板格式化AI文本
+func (a *App) FormatAIText(recognitionResultJSON, templateKey string) map[string]interface{} {
+	// 解析识别结果
+	var result models.RecognitionResult
+	if err := json.Unmarshal([]byte(recognitionResultJSON), &result); err != nil {
+		return map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("识别结果解析失败: %v", err),
+		}
+	}
+
+	// 使用模板格式化提示词
+	formattedPrompt := utils.FormatAIPrompt(&result, templateKey)
+
+	return map[string]interface{}{
+		"success": true,
+		"prompt":  formattedPrompt,
+	}
+}
+
+// GetTemplateManagerInfo 获取模板管理器信息
+func (a *App) GetTemplateManagerInfo() map[string]interface{} {
+	templateManager := utils.GetTemplateManager()
+	availableKeys := templateManager.GetAvailableTemplateKeys()
+
+	return map[string]interface{}{
+		"success":       true,
+		"availableKeys": availableKeys,
+		"isLoaded":      templateManager != nil,
+	}
+}
 
 // sendProgressEvent 发送进度事件
 func (a *App) sendProgressEvent(eventType string, data interface{}) {

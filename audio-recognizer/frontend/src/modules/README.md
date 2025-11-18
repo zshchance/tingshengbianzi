@@ -69,27 +69,7 @@
 
 ---
 
-### 4. UIController.js - UI控制模块
-**职责**：负责用户界面的控制、状态显示、动画效果等
-
-**主要功能**：
-- Toast提示系统
-- 进度显示控制
-- 文件信息显示
-- 按钮状态管理
-- 设置界面控制
-- 结果展示控制
-
-**主要方法**：
-- `showToast(message, type, duration)` - 显示Toast提示
-- `updateProgress(progress)` - 更新进度显示
-- `displayFileInfo(fileInfo)` - 显示文件信息
-- `enableStartButton()` / `disableStartButton()` - 按钮状态控制
-- `openSettings()` / `closeSettings()` - 设置界面控制
-
----
-
-### 5. EventHandler.js - 事件管理模块
+### 4. EventHandler.js - 事件管理模块
 **职责**：负责统一管理所有UI事件和Wails后端事件
 
 **主要功能**：
@@ -143,7 +123,7 @@
 
 ### 状态共享
 - 通过主应用实例 (window.audioApp) 共享文件和结果状态
-- UIController 通过主应用实例获取当前状态信息
+- UI状态由Vue组件管理，通过Pinia状态库进行状态共享
 
 ---
 

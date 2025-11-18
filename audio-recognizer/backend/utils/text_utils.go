@@ -1,9 +1,13 @@
 package utils
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"audio-recognizer/backend/models"
 )
@@ -17,6 +21,41 @@ const (
 	MarkTypeSpeaker  = "speaker"  // 说话人
 	MarkTypeLanguage = "language" // 语言
 )
+
+// AIPromptTemplate AI提示词模板结构体
+type AIPromptTemplate struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Template    string `json:"template"`
+}
+
+// TemplatesConfig 模板配置文件结构体
+type TemplatesConfig struct {
+	AIPrompts        map[string]AIPromptTemplate `json:"ai_prompts"`
+	DefaultTemplate  string                     `json:"defaultTemplate"`
+	Version          string                     `json:"version"`
+	LastUpdated      string                     `json:"last_updated"`
+	Description      string                     `json:"description"`
+
+	// 兼容旧格式
+	AIOptimizationTemplates map[string]AIPromptTemplate `json:"aiOptimizationTemplates,omitempty"`
+}
+
+// 模板管理器
+var (
+	templateManager = &TemplateManager{
+		templates: make(map[string]AIPromptTemplate),
+		mutex:     sync.RWMutex{},
+	}
+)
+
+// TemplateManager 模板管理器
+type TemplateManager struct {
+	templates       map[string]AIPromptTemplate
+	defaultTemplate string
+	mutex           sync.RWMutex
+	loaded          bool
+}
 
 // 停顿时长类型
 const (
@@ -301,12 +340,173 @@ func ParseTextWithMarks(text string) (string, []models.SpecialMark) {
 	return cleanText, marks
 }
 
-// FormatAIPrompt 根据设计文档格式化AI优化提示词
-func FormatAIPrompt(result *models.RecognitionResult, template string) string {
+// LoadTemplates 加载模板配置文件
+func (tm *TemplateManager) LoadTemplates(configPath string) error {
+	tm.mutex.Lock()
+	defer tm.mutex.Unlock()
+
+	// 如果配置文件路径为空，使用默认路径
+	if configPath == "" {
+		configPath = "config/templates.json"
+	}
+
+	// 尝试解析路径，如果是相对路径则基于当前工作目录
+	if !filepath.IsAbs(configPath) {
+		wd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("获取当前工作目录失败: %v", err)
+		}
+		configPath = filepath.Join(wd, configPath)
+	}
+
+	// 检查文件是否存在
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return fmt.Errorf("模板配置文件不存在: %s", configPath)
+	}
+
+	// 读取配置文件
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("读取模板配置文件失败: %v", err)
+	}
+
+	// 解析JSON
+	var config TemplatesConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return fmt.Errorf("解析模板配置文件失败: %v", err)
+	}
+
+	// 加载新的模板格式
+	if len(config.AIPrompts) > 0 {
+		tm.templates = config.AIPrompts
+		tm.defaultTemplate = config.DefaultTemplate
+	} else if len(config.AIOptimizationTemplates) > 0 {
+		// 兼容旧格式
+		tm.templates = config.AIOptimizationTemplates
+		tm.defaultTemplate = config.DefaultTemplate
+	} else {
+		return fmt.Errorf("配置文件中没有找到有效的模板数据")
+	}
+
+	// 如果没有默认模板，使用第一个模板
+	if tm.defaultTemplate == "" && len(tm.templates) > 0 {
+		for key := range tm.templates {
+			tm.defaultTemplate = key
+			break
+		}
+	}
+
+	tm.loaded = true
+	fmt.Printf("成功加载 %d 个AI提示词模板，默认模板: %s\n", len(tm.templates), tm.defaultTemplate)
+	return nil
+}
+
+// GetTemplate 获取指定模板
+func (tm *TemplateManager) GetTemplate(templateKey string) (AIPromptTemplate, bool) {
+	tm.mutex.RLock()
+	defer tm.mutex.RUnlock()
+
+	if !tm.loaded {
+		// 尝试自动加载
+		if err := tm.LoadTemplates(""); err != nil {
+			fmt.Printf("自动加载模板失败: %v\n", err)
+		}
+	}
+
+	template, exists := tm.templates[templateKey]
+	return template, exists
+}
+
+// GetDefaultTemplate 获取默认模板
+func (tm *TemplateManager) GetDefaultTemplate() (AIPromptTemplate, bool) {
+	tm.mutex.RLock()
+	defer tm.mutex.RUnlock()
+
+	if !tm.loaded {
+		// 尝试自动加载
+		if err := tm.LoadTemplates(""); err != nil {
+			fmt.Printf("自动加载模板失败: %v\n", err)
+		}
+	}
+
+	if tm.defaultTemplate == "" {
+		return AIPromptTemplate{}, false
+	}
+
+	template, exists := tm.templates[tm.defaultTemplate]
+	return template, exists
+}
+
+// GetAllTemplates 获取所有模板
+func (tm *TemplateManager) GetAllTemplates() map[string]AIPromptTemplate {
+	tm.mutex.RLock()
+	defer tm.mutex.RUnlock()
+
+	if !tm.loaded {
+		// 尝试自动加载
+		if err := tm.LoadTemplates(""); err != nil {
+			fmt.Printf("自动加载模板失败: %v\n", err)
+		}
+	}
+
+	// 返回副本避免外部修改
+	result := make(map[string]AIPromptTemplate)
+	for key, template := range tm.templates {
+		result[key] = template
+	}
+	return result
+}
+
+// GetAvailableTemplateKeys 获取可用的模板键列表
+func (tm *TemplateManager) GetAvailableTemplateKeys() []string {
+	tm.mutex.RLock()
+	defer tm.mutex.RUnlock()
+
+	if !tm.loaded {
+		// 尝试自动加载
+		if err := tm.LoadTemplates(""); err != nil {
+			fmt.Printf("自动加载模板失败: %v\n", err)
+		}
+	}
+
+	keys := make([]string, 0, len(tm.templates))
+	for key := range tm.templates {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+// FormatAIPrompt 根据模板类型格式化AI优化提示词
+func FormatAIPrompt(result *models.RecognitionResult, templateKey string) string {
 	if result == nil {
 		return ""
 	}
 
+	// 如果没有指定模板，使用默认模板
+	if templateKey == "" {
+		templateKey = "basic" // 默认使用基础模板
+	}
+
+	// 获取模板
+	template, exists := templateManager.GetTemplate(templateKey)
+	if !exists {
+		// 如果指定模板不存在，尝试获取默认模板
+		defaultTemplate, hasDefault := templateManager.GetDefaultTemplate()
+		if !hasDefault {
+			// 如果默认模板也不存在，使用硬编码的备用模板
+			return getFallbackPrompt(result.Text)
+		}
+		template = defaultTemplate
+	}
+
+	// 替换占位符
+	formattedText := strings.ReplaceAll(template.Template, "【RECOGNITION_TEXT】", result.Text)
+
+	return formattedText
+}
+
+// getFallbackPrompt 获取备用硬编码提示词（向后兼容）
+func getFallbackPrompt(text string) string {
 	basePrompt := `请优化以下音频识别结果，要求：
 
 1. 基础优化
@@ -338,8 +538,15 @@ func FormatAIPrompt(result *models.RecognitionResult, template string) string {
 
 优化后的文本：`
 
-	// 替换占位符
-	formattedText := strings.ReplaceAll(basePrompt, "【RECOGNITION_TEXT】", result.Text)
+	return strings.ReplaceAll(basePrompt, "【RECOGNITION_TEXT】", text)
+}
 
-	return formattedText
+// GetTemplateManager 获取全局模板管理器实例
+func GetTemplateManager() *TemplateManager {
+	return templateManager
+}
+
+// InitializeTemplates 初始化模板系统
+func InitializeTemplates(configPath string) error {
+	return templateManager.LoadTemplates(configPath)
 }

@@ -6,6 +6,14 @@ export function ExportResult(arg1, arg2, arg3) {
   return window['go']['main']['App']['ExportResult'](arg1, arg2, arg3);
 }
 
+export function FormatAIText(arg1, arg2) {
+  return window['go']['main']['App']['FormatAIText'](arg1, arg2);
+}
+
+export function GetAITemplates() {
+  return window['go']['main']['App']['GetAITemplates']();
+}
+
 export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
 }
@@ -16,6 +24,10 @@ export function GetModelInfo(arg1) {
 
 export function GetRecognitionStatus() {
   return window['go']['main']['App']['GetRecognitionStatus']();
+}
+
+export function GetTemplateManagerInfo() {
+  return window['go']['main']['App']['GetTemplateManagerInfo']();
 }
 
 export function LoadModel(arg1, arg2) {

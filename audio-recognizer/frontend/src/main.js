@@ -5,7 +5,6 @@ import './app.css';
 import { AudioFileProcessor } from './modules/AudioFileProcessor.js';
 import { RecognitionManager } from './modules/RecognitionManager.js';
 import { SettingsManager } from './modules/SettingsManager.js';
-import { UIController } from './modules/UIController.js';
 import { EventHandler } from './modules/EventHandler.js';
 
 /**
@@ -29,7 +28,6 @@ class AudioRecognizerApp {
             this.audioFileProcessor = new AudioFileProcessor();
             this.recognitionManager = new RecognitionManager();
             this.settingsManager = new SettingsManager();
-            this.uiController = new UIController();
 
             // 初始化设置
             await this.settingsManager.initialize();
@@ -38,8 +36,7 @@ class AudioRecognizerApp {
             this.eventHandler = new EventHandler(
                 this.audioFileProcessor,
                 this.recognitionManager,
-                this.settingsManager,
-                this.uiController
+                this.settingsManager
             );
 
             // 设置识别管理器的回调
@@ -52,7 +49,6 @@ class AudioRecognizerApp {
 
         } catch (error) {
             console.error('应用初始化失败:', error);
-            this.uiController.showToast('应用初始化失败', 'error');
         }
     }
 
@@ -61,20 +57,22 @@ class AudioRecognizerApp {
      */
     setupRecognitionCallbacks() {
         this.recognitionManager.setProgressCallback((progress) => {
-            this.uiController.updateProgress(progress);
+            // 进度回调已移至Vue组件处理
         });
 
         this.recognitionManager.setResultCallback((result) => {
             this.recognitionResult = result;
-            this.uiController.displayResults(result, 'original');
+            // 结果显示已移至Vue组件处理
         });
 
         this.recognitionManager.setErrorCallback((error) => {
-            this.uiController.showToast(`识别失败: ${error.message || error}`, 'error');
+            console.error('识别失败:', error);
+            // 错误显示已移至Vue组件处理
         });
 
         this.recognitionManager.setCompleteCallback(() => {
-            this.uiController.showToast('识别完成！', 'success');
+            console.log('识别完成');
+            // 完成提示已移至Vue组件处理
         });
     }
 
@@ -83,25 +81,18 @@ class AudioRecognizerApp {
      */
     async initializeUI() {
         try {
-            // 更新初始状态
-            this.uiController.updateStatus('就绪', 'ready');
-
             // 获取识别状态
             const status = await this.recognitionManager.getRecognitionStatus();
-            this.uiController.updateModelStatus(status);
+            console.log('模型状态:', status);
 
-            // 更新设置UI
+            // 更新设置
             const settings = this.settingsManager.getAllSettings();
-            this.uiController.updateSettingsUI(settings);
+            console.log('设置已加载:', settings);
 
-            // 禁用开始按钮（等待文件选择）
-            this.uiController.disableStartButton();
-
-            this.uiController.showToast('应用初始化完成', 'success');
+            console.log('UI初始化完成');
 
         } catch (error) {
             console.error('UI初始化失败:', error);
-            this.uiController.showToast('UI初始化失败', 'error');
         }
     }
 
@@ -131,7 +122,6 @@ class AudioRecognizerApp {
         this.audioFileProcessor = null;
         this.recognitionManager = null;
         this.settingsManager = null;
-        this.uiController = null;
         this.eventHandler = null;
 
         console.log('音频识别应用已销毁');
