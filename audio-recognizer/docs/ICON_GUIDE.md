@@ -80,7 +80,8 @@ export PATH=$PATH:~/go/bin
 
 # 构建应用程序
 wails build -debug          # 开发版本
-wails build -production     # 生产版本
+wails build                 # 生产版本 (默认)
+wails build -clean          # 清理构建目录的生产版本
 ```
 
 ### 使用构建脚本

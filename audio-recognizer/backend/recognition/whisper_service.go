@@ -49,11 +49,15 @@ type WhisperService struct {
 
 // NewWhisperService 创建新的Whisper语音识别服务
 func NewWhisperService(config *models.RecognitionConfig) (*WhisperService, error) {
+	utils.LogInfo("开始初始化Whisper语音识别服务")
+
 	// 创建音频处理器
 	processor, err := audio.NewProcessor()
 	if err != nil {
+		utils.LogError("创建音频处理器失败: %v", err)
 		return nil, err
 	}
+	utils.LogInfo("音频处理器创建成功")
 
 	// 获取可执行文件所在目录
 	exePath, err := os.Executable()
@@ -61,6 +65,7 @@ func NewWhisperService(config *models.RecognitionConfig) (*WhisperService, error
 		exePath = "."
 	}
 	exeDir := filepath.Dir(exePath)
+	utils.LogDebug("可执行文件目录: %s", exeDir)
 
 	// 获取whisper-cli路径（尝试多个可能的路径）
 	possiblePaths := []string{
@@ -71,23 +76,28 @@ func NewWhisperService(config *models.RecognitionConfig) (*WhisperService, error
 	}
 
 	var whisperPath string
+	utils.LogDebug("开始查找Whisper CLI，尝试路径: %v", possiblePaths)
+
 	for _, path := range possiblePaths {
 		if _, err := os.Stat(path); err == nil {
 			// 转换为绝对路径
 			absPath, err := filepath.Abs(path)
 			if err == nil {
 				whisperPath = absPath
-				fmt.Printf("找到Whisper CLI: %s\n", absPath)
+				utils.LogInfo("找到Whisper CLI: %s", absPath)
 				break
 			} else {
 				whisperPath = path
-				fmt.Printf("找到Whisper CLI: %s\n", path)
+				utils.LogInfo("找到Whisper CLI: %s", path)
 				break
 			}
+		} else {
+			utils.LogDebug("路径不存在: %s", path)
 		}
 	}
 
 	if whisperPath == "" {
+		utils.LogError("未找到whisper-cli可执行文件，尝试的路径: %v", possiblePaths)
 		return nil, fmt.Errorf("未找到whisper-cli可执行文件，请确保文件存在于backend/recognition/目录中")
 	}
 
@@ -98,41 +108,59 @@ func NewWhisperService(config *models.RecognitionConfig) (*WhisperService, error
 		hasRealModel: false,
 		whisperPath:  whisperPath,
 	}
+	utils.LogInfo("WhisperService结构体创建成功")
 
 	// 检查是否有真实模型文件
+	utils.LogDebug("开始检查Whisper模型文件，模型路径: %s", config.ModelPath)
 	if service.checkWhisperModel() {
-		fmt.Println("检测到Whisper模型文件，将尝试真实语音识别")
+		utils.LogInfo("检测到Whisper模型文件，将使用真实语音识别")
 		service.hasRealModel = true
 		service.models["default"] = true
 	} else {
-		fmt.Println("未检测到Whisper模型文件，将使用模拟识别服务")
+		utils.LogWarn("未检测到Whisper模型文件，将使用模拟识别服务")
 	}
 
+	utils.LogInfo("Whisper语音识别服务初始化完成")
 	return service, nil
 }
 
 // checkWhisperModel 检查Whisper模型文件是否存在
 func (s *WhisperService) checkWhisperModel() bool {
+	utils.LogDebug("检查模型文件是否存在")
+
 	// 首先检查是否指定了具体的模型文件
 	if s.config.SpecificModelFile != "" {
+		utils.LogDebug("检查指定的模型文件: %s", s.config.SpecificModelFile)
 		if _, err := os.Stat(s.config.SpecificModelFile); err == nil {
-			fmt.Printf("找到指定模型文件: %s\n", s.config.SpecificModelFile)
+			utils.LogInfo("找到指定模型文件: %s", s.config.SpecificModelFile)
 			return true
+		} else {
+			utils.LogWarn("指定的模型文件不存在: %s", s.config.SpecificModelFile)
 		}
 	}
 
 	// 扫描模型目录中的所有可用模型
+	utils.LogDebug("扫描模型目录: %s", s.config.ModelPath)
 	if entries, err := os.ReadDir(s.config.ModelPath); err == nil {
 		modelCount := 0
+		var foundModels []string
 		for _, entry := range entries {
 			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".bin") && s.isValidWhisperModel(entry.Name()) {
 				modelCount++
+				foundModels = append(foundModels, entry.Name())
 			}
 		}
 		if modelCount > 0 {
-			fmt.Printf("找到 %d 个模型文件在目录: %s\n", modelCount, s.config.ModelPath)
+			utils.LogInfo("找到 %d 个有效模型文件在目录: %s", modelCount, s.config.ModelPath)
+			for _, model := range foundModels {
+				utils.LogDebug("发现模型: %s", model)
+			}
 			return true
+		} else {
+			utils.LogWarn("模型目录存在但未找到有效的.bin模型文件: %s", s.config.ModelPath)
 		}
+	} else {
+		utils.LogError("无法读取模型目录: %s, 错误: %v", s.config.ModelPath, err)
 	}
 
 	return false
@@ -253,13 +281,43 @@ func (s *WhisperService) LoadModel(language, modelPath string) error {
 
 // RecognizeFile 识别音频文件
 func (s *WhisperService) RecognizeFile(audioPath string, language string, progressCallback func(*models.RecognitionProgress)) (*models.RecognitionResult, error) {
-	if !s.hasRealModel {
-		// 如果没有真实模型，回退到模拟识别
-		return s.fallbackRecognition(audioPath, language, progressCallback)
+	utils.LogInfo("开始语音识别，音频文件: %s, 语言: %s", audioPath, language)
+
+	// 检查音频文件是否存在
+	if _, err := os.Stat(audioPath); err != nil {
+		utils.LogError("音频文件不存在: %s, 错误: %v", audioPath, err)
+		return nil, fmt.Errorf("音频文件不存在: %s", audioPath)
 	}
 
+	// 获取音频文件信息
+	if info, err := os.Stat(audioPath); err == nil {
+		utils.LogDebug("音频文件信息: 大小=%d bytes", info.Size())
+	}
+
+	if !s.hasRealModel {
+		utils.LogWarn("没有真实模型，使用模拟识别服务")
+		// 如果没有真实模型，回退到模拟识别
+		result, err := s.fallbackRecognition(audioPath, language, progressCallback)
+		if err != nil {
+			utils.LogError("模拟识别失败: %v", err)
+		} else {
+			utils.LogInfo("模拟识别完成，结果长度: %d", len(result.Text))
+		}
+		return result, err
+	}
+
+	utils.LogInfo("使用真实Whisper CLI进行识别")
 	// 使用真实的Whisper CLI进行识别
-	return s.realWhisperRecognition(audioPath, language, progressCallback)
+	result, err := s.realWhisperRecognition(audioPath, language, progressCallback)
+	if err != nil {
+		utils.LogError("真实Whisper识别失败: %v", err)
+	} else {
+		utils.LogInfo("真实Whisper识别完成，结果长度: %d", len(result.Text))
+		if len(result.Text) == 0 {
+			utils.LogWarn("识别结果为空！音频文件: %s", audioPath)
+		}
+	}
+	return result, err
 }
 
 // realWhisperRecognition 使用真实的Whisper CLI进行语音识别

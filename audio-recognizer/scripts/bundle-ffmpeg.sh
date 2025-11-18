@@ -32,6 +32,8 @@ case "$OS" in
 
             if [[ -f "$FFMPEG_PATH" ]]; then
                 echo "✅ 找到 FFmpeg: $FFMPEG_PATH"
+                # 删除旧文件，避免权限问题
+                rm -f "$FFMPEG_DIR/ffmpeg"
                 cp "$FFMPEG_PATH" "$FFMPEG_DIR/"
                 echo "✅ 复制 FFmpeg 成功"
             else
@@ -41,6 +43,8 @@ case "$OS" in
 
             if [[ -f "$FFPROBE_PATH" ]]; then
                 echo "✅ 找到 FFprobe: $FFPROBE_PATH"
+                # 删除旧文件，避免权限问题
+                rm -f "$FFMPEG_DIR/ffprobe"
                 cp "$FFPROBE_PATH" "$FFMPEG_DIR/"
                 echo "✅ 复制 FFprobe 成功"
             else
@@ -58,10 +62,14 @@ case "$OS" in
             FFPROBE_PATH=$(which ffprobe)
 
             echo "✅ 找到 FFmpeg: $FFMPEG_PATH"
+            # 删除旧文件，避免权限问题
+            rm -f "$FFMPEG_DIR/ffmpeg"
             cp "$FFMPEG_PATH" "$FFMPEG_DIR/"
             echo "✅ 复制 FFmpeg 成功"
 
             echo "✅ 找到 FFprobe: $FFPROBE_PATH"
+            # 删除旧文件，避免权限问题
+            rm -f "$FFMPEG_DIR/ffprobe"
             cp "$FFPROBE_PATH" "$FFMPEG_DIR/"
             echo "✅ 复制 FFprobe 成功"
         else
@@ -77,9 +85,11 @@ case "$OS" in
         ;;
 esac
 
-# 设置可执行权限
-chmod +x "$FFMPEG_DIR/ffmpeg"
-chmod +x "$FFMPEG_DIR/ffprobe"
+# 设置可执行权限 (755 = rwx r-x r-x)
+chmod 755 "$FFMPEG_DIR/ffmpeg"
+chmod 755 "$FFMPEG_DIR/ffprobe"
+
+echo "✅ 权限设置完成"
 
 echo "✅ FFmpeg 打包完成！"
 echo "📁 打包位置: $FFMPEG_DIR"

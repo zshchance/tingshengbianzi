@@ -33,16 +33,25 @@ export PATH=$PATH:~/go/bin && wails dev
 # Development build
 wails build -debug
 
-# Production build
-wails build -production
+# Production build (default)
+wails build
+
+# Clean build
+wails build -clean
 
 # Using build scripts
 ./scripts/build.sh
 
+# Complete build with all dependencies (recommended for distribution)
+./scripts/build-complete.sh
+
 # Cross-platform builds
-wails build -platform darwin/amd64 -production
-wails build -platform windows/amd64 -production
-wails build -platform linux/amd64 -production
+wails build -platform darwin/amd64 -clean
+wails build -platform windows/amd64 -clean
+wails build -platform linux/amd64 -clean
+
+# Platform-specific builds
+./scripts/build-macos-release.sh
 ```
 
 ### Model Management
@@ -60,6 +69,9 @@ curl -L https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large.bin
 
 # Large-v3-turbo models (recommended for better quality)
 curl -L https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin -o models/whisper/ggml-large-v3-turbo.bin
+
+# Quantized model for better performance
+curl -L https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q8_0.bin -o models/whisper/ggml-large-v3-turbo-q8_0.bin
 ```
 
 ## Architecture Overview
@@ -138,12 +150,14 @@ Whisper models are stored in configurable paths (default `./models/whisper/`):
 - **ggml-large-v3-turbo-q8_0.bin** - Quantized version for better performance
 
 ### Wails Integration (v2.11.0)
-- **Application context** managed through `AppContext` struct
+- **Application context** managed through `App` struct with `ctx context.Context`
 - **Event-driven communication** between frontend and backend via `runtime.EventsEmit()`
 - **Progress updates** with percentage and status tracking
 - **File operations** using Wails runtime services
 - **Embedded frontend assets** in production builds
 - **Cross-platform deployment** with proper asset embedding
+- **Configuration management** with real-time frontend-backend synchronization
+- **AI template system** for intelligent text optimization and processing
 
 ## Important Implementation Details
 
@@ -201,6 +215,7 @@ Whisper models are stored in configurable paths (default `./models/whisper/`):
 3. **Backend Go code** automatically recompiles on changes
 4. **Full application restarts** on backend changes
 5. **Frontend-only changes** hot reload without restart
+6. **Development scripts**: Use `./start-dev.sh` for automated environment setup and model downloading
 
 ### Testing the Application
 1. **Unit Testing** - No formal test suite currently implemented
@@ -263,3 +278,8 @@ Whisper models are stored in configurable paths (default `./models/whisper/`):
 - **Permission issues** - Check configuration directory permissions
 - **Hot reload not working** - Verify Wails development server is properly running
 - **Build asset issues** - Clean build directory and rebuild from scratch
+- **Icon display issues** - Use `./scripts/fix-all-icons.sh` to resolve icon caching problems
+- **Missing models** - Run `./scripts/download-models.sh` to download required Whisper models
+- **FFmpeg embedding** - Use `./scripts/bundle-ffmpeg.sh` to embed FFmpeg for standalone deployment
+- **Packaged app not working** - Use `./scripts/build-complete.sh` for distribution builds with all dependencies
+- **Whisper CLI missing** - The complete build script includes `backend/recognition/whisper-cli` binary packaging

@@ -42,15 +42,28 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
+	// 初始化日志系统
+	utils.InitLogger()
+	utils.LogInfo("=== 听声辨字应用程序启动 ===")
+	utils.LogInfo("应用上下文初始化完成")
+
 	// 初始化AI提示词模板系统
 	if err := a.initializeTemplates(); err != nil {
 		fmt.Printf("初始化AI模板系统失败: %v\n", err)
+		utils.LogError("初始化AI模板系统失败: %v", err)
+	} else {
+		utils.LogInfo("AI模板系统初始化成功")
 	}
 
 	// 初始化语音识别服务
 	if err := a.initializeVoskService(); err != nil {
 		fmt.Printf("初始化Vosk服务失败: %v\n", err)
+		utils.LogError("初始化语音识别服务失败: %v", err)
+	} else {
+		utils.LogInfo("语音识别服务初始化成功")
 	}
+
+	utils.LogInfo("应用程序启动完成")
 }
 
 // initializeTemplates 初始化AI提示词模板系统

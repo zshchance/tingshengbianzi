@@ -5,6 +5,23 @@
 
 set -e
 
+# 解析参数
+NO_REBUILD=false
+for arg in "$@"; do
+    case $arg in
+        --no-rebuild)
+            NO_REBUILD=true
+            ;;
+        --help)
+            echo "用法: $0 [选项]"
+            echo "选项:"
+            echo "  --no-rebuild   不执行构建步骤"
+            echo "  --help         显示此帮助信息"
+            exit 0
+            ;;
+    esac
+done
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -36,7 +53,16 @@ fi
 
 LOGO_SIZE=$(stat -f%z "$ORIGINAL_LOGO" 2>/dev/null || echo "unknown")
 LOGO_DIM=$(sips -g all "$ORIGINAL_LOGO" 2>/dev/null | grep "pixelWidth" | awk '{print $2}' || echo "unknown")
-echo -e "${GREEN}✅ 原始logo: ${LOGO_SIZE} bytes, ${LOGO_DIM}x${LOGO_DIM}px${NC}"
+LOGO_DIM_HEIGHT=$(sips -g all "$ORIGINAL_LOGO" 2>/dev/null | grep "pixelHeight" | awk '{print $2}' || echo "unknown")
+echo -e "${GREEN}✅ 原始logo: ${LOGO_SIZE} bytes, ${LOGO_DIM}x${LOGO_DIM_HEIGHT}px${NC}"
+
+# 检查原始logo尺寸是否足够
+if [ "$LOGO_DIM" -lt 1024 ] || [ "$LOGO_DIM_HEIGHT" -lt 1024 ]; then
+    echo -e "${YELLOW}⚠️ 原始logo尺寸小于1024x1024，可能影响图标清晰度${NC}"
+    echo -e "${YELLOW}⚠️ 建议使用至少1024x1024像素的高质量logo文件${NC}"
+else
+    echo -e "${GREEN}✅ 原始logo尺寸符合要求${NC}"
+fi
 
 # 2. 清理旧的iconset并重新生成
 echo ""
@@ -44,9 +70,9 @@ echo "🔧 步骤2: 重新生成完整的iconset..."
 rm -rf "$ICON_DIR/icon.iconset" 2>/dev/null || true
 mkdir -p "$ICON_DIR/icon.iconset"
 
-echo "📋 生成所有必需尺寸的图标..."
+echo "📋 生成所有必需尺寸的图标（高质量模式）..."
 
-# 生成所有尺寸
+# 生成所有尺寸，使用高质量重采样（macOS默认）
 sips -z 16 16 "$ORIGINAL_LOGO" --out "$ICON_DIR/icon.iconset/icon_16x16.png" 2>/dev/null || true
 sips -z 32 32 "$ORIGINAL_LOGO" --out "$ICON_DIR/icon.iconset/icon_16x16@2x.png" 2>/dev/null || true
 sips -z 32 32 "$ORIGINAL_LOGO" --out "$ICON_DIR/icon.iconset/icon_32x32.png" 2>/dev/null || true
@@ -144,35 +170,64 @@ echo "1. 重新构建应用：export PATH=\$PATH:~/go/bin && wails build -platfo
 echo "2. 清理图标缓存：killall Dock"
 echo "3. 启动应用验证图标：open build/bin/tingshengbianzi.app"
 
-# 9. 询问是否立即重新构建
-echo ""
-read -p "是否立即重新构建应用？(y/N): " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo -e "${BLUE}🔨 开始重新构建应用...${NC}"
-    cd "$PROJECT_ROOT"
-    export PATH=$PATH:~/go/bin
+# 9. 询问构建选项
+if [ "$NO_REBUILD" = false ]; then
+    echo ""
+    echo -e "${BLUE}🔨 构建选项:${NC}"
+    echo "1. 仅重新构建应用 (wails build)"
+    echo "2. 完整打包 (包含所有依赖)"
+    echo "3. 跳过构建"
+    echo ""
+    read -p "请选择 (1/2/3): " -n 1 -r
+    echo
 
-    if wails build -platform darwin/arm64 -clean; then
-        echo -e "${GREEN}✅ 应用重新构建成功！${NC}"
+    case $REPLY in
+        "1")
+            echo -e "${BLUE}🔨 开始重新构建应用...${NC}"
+            cd "$PROJECT_ROOT"
+            export PATH=$PATH:~/go/bin
 
-        # 检查生成的应用图标
-        APP_ICON="$PROJECT_ROOT/build/bin/tingshengbianzi.app/Contents/Resources/iconfile.icns"
-        if [ -f "$APP_ICON" ]; then
-            APP_SIZE=$(stat -f%z "$APP_ICON" 2>/dev/null || echo "unknown")
-            echo -e "${GREEN}✅ 应用图标已更新: ${APP_SIZE} bytes${NC}"
-        else
-            echo -e "${RED}❌ 应用图标文件未找到${NC}"
-        fi
+            if wails build -platform darwin/arm64 -clean; then
+                echo -e "${GREEN}✅ 应用重新构建成功！${NC}"
 
-        echo ""
-        echo -e "${BLUE}🚀 启动应用测试图标：${NC}"
-        echo "open \"$PROJECT_ROOT/build/bin/tingshengbianzi.app\""
-    else
-        echo -e "${RED}❌ 应用重新构建失败${NC}"
-    fi
+                # 检查生成的应用图标
+                APP_ICON="$PROJECT_ROOT/build/bin/tingshengbianzi.app/Contents/Resources/iconfile.icns"
+                if [ -f "$APP_ICON" ]; then
+                    APP_SIZE=$(stat -f%z "$APP_ICON" 2>/dev/null || echo "unknown")
+                    echo -e "${GREEN}✅ 应用图标已更新: ${APP_SIZE} bytes${NC}"
+                else
+                    echo -e "${RED}❌ 应用图标文件未找到${NC}"
+                fi
+
+                echo ""
+                echo -e "${BLUE}🚀 启动应用测试图标：${NC}"
+                echo "open \"$PROJECT_ROOT/build/bin/tingshengbianzi.app\""
+            else
+                echo -e "${RED}❌ 应用重新构建失败${NC}"
+            fi
+            ;;
+        "2")
+            echo -e "${BLUE}📦 开始完整打包...${NC}"
+            if [ -f "$SCRIPT_DIR/build-complete.sh" ]; then
+                "$SCRIPT_DIR/build-complete.sh"
+            else
+                echo -e "${RED}❌ 完整打包脚本不存在: $SCRIPT_DIR/build-complete.sh${NC}"
+                echo -e "${YELLOW}⚠️ 回退到标准构建...${NC}"
+                cd "$PROJECT_ROOT"
+                export PATH=$PATH:~/go/bin
+                wails build -platform darwin/arm64 -clean
+            fi
+            ;;
+        "3"|"")
+            echo -e "${YELLOW}⏭️ 跳过构建${NC}"
+            ;;
+        *)
+            echo -e "${YELLOW}⏭️ 无效选择，跳过构建${NC}"
+            ;;
+    esac
 else
-    echo -e "${YELLOW}⏭️ 跳过重新构建${NC}"
+    echo ""
+    echo -e "${YELLOW}⏭️ 跳过构建 (no-rebuild模式)${NC}"
 fi
 
 echo ""
