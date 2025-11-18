@@ -55,11 +55,31 @@ func (a *App) startup(ctx context.Context) {
 
 // initializeTemplates 初始化AI提示词模板系统
 func (a *App) initializeTemplates() error {
-	// 获取应用根目录
-	appRoot := getAppRootDirectory()
+	// 获取用户配置目录和相对路径
+	userConfigDir, configSubDir := getUserConfigDirectory()
 
 	// 设置模板配置文件路径
-	templatePath := filepath.Join(appRoot, "config", "templates.json")
+	var templatePath string
+	if configSubDir == "" {
+		// 用户主目录中的模板
+		templatePath = filepath.Join(userConfigDir, "templates.json")
+
+		// 如果用户目录中没有模板文件，复制内置模板
+		if _, err := os.Stat(templatePath); os.IsNotExist(err) {
+			// 尝试从应用资源目录复制模板文件
+			appRoot := getAppRootDirectory()
+			builtinTemplatePath := filepath.Join(appRoot, "config", "templates.json")
+			if builtinData, err := os.ReadFile(builtinTemplatePath); err == nil {
+				// 复制到用户目录
+				if err := os.WriteFile(templatePath, builtinData, 0644); err == nil {
+					fmt.Printf("✅ 已复制内置模板到用户目录: %s\n", templatePath)
+				}
+			}
+		}
+	} else {
+		// 项目目录中的模板
+		templatePath = filepath.Join(userConfigDir, configSubDir, "templates.json")
+	}
 
 	// 初始化模板系统
 	if err := utils.InitializeTemplates(templatePath); err != nil {
@@ -156,15 +176,64 @@ func getAppRootDirectory() string {
 	return exeDir
 }
 
+// getUserConfigDirectory 获取用户配置目录（用于发布版本）
+func getUserConfigDirectory() (string, string) {
+	// 检查是否在发布版本中运行
+	exePath, err := os.Executable()
+	if err != nil {
+		return getAppRootDirectory(), "config"
+	}
+
+	exeDir := filepath.Dir(exePath)
+
+	// 如果在.app包中，且检测到项目环境，则使用项目目录（开发模式）
+	if strings.Contains(exeDir, ".app/Contents/MacOS") {
+		appRoot := getAppRootDirectory()
+		// 检查是否真的在项目开发环境中（有项目文件）
+		goModExists := true
+		wailsJsonExists := true
+
+		if _, err := os.Stat(filepath.Join(appRoot, "go.mod")); err != nil {
+			goModExists = false
+		}
+		if _, err := os.Stat(filepath.Join(appRoot, "wails.json")); err != nil {
+			wailsJsonExists = false
+		}
+
+		if goModExists && wailsJsonExists {
+			// 开发环境：使用项目目录
+			return appRoot, "config"
+		}
+	}
+
+	// 生产环境：使用用户主目录
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		// 回退到应用目录
+		return exeDir, "config"
+	}
+
+	// 创建用户配置目录：~/Library/Application Support/听声辨字/
+	configDir := filepath.Join(homeDir, "Library", "Application Support", "听声辨字")
+
+	// 确保目录存在
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		// 如果创建失败，回退到应用目录
+		return exeDir, "config"
+	}
+
+	return configDir, ""
+}
+
 // loadDefaultConfig 加载默认配置
 func loadDefaultConfig() *models.RecognitionConfig {
-	// 获取应用根目录
-	appRoot := getAppRootDirectory()
+	// 获取用户配置目录和相对路径
+	userConfigDir, configSubDir := getUserConfigDirectory()
 
 	// 创建默认配置
 	defaultConfig := &models.RecognitionConfig{
 		Language:              "zh-CN",
-		ModelPath:             filepath.Join(appRoot, "models"),
+		ModelPath:             filepath.Join(userConfigDir, "models"),
 		SpecificModelFile:     "", // 用户指定的具体模型文件
 		SampleRate:            16000,
 		BufferSize:            4000,
@@ -175,9 +244,15 @@ func loadDefaultConfig() *models.RecognitionConfig {
 		EnableNoiseReduction:  false,
 	}
 
-	// 尝试加载用户配置文件
-	configDir := filepath.Join(appRoot, "config")
-	configFile := filepath.Join(configDir, "user-config.json")
+	// 构建配置文件路径
+	var configFile string
+	if configSubDir == "" {
+		// 用户主目录中的配置
+		configFile = filepath.Join(userConfigDir, "user-config.json")
+	} else {
+		// 项目目录中的配置
+		configFile = filepath.Join(userConfigDir, configSubDir, "user-config.json")
+	}
 
 	fmt.Printf("📂 配置文件路径: %s\n", configFile)
 
@@ -508,17 +583,22 @@ func (a *App) UpdateConfig(configJSON string) RecognitionResponse {
 
 // saveConfigToFile 保存配置到文件
 func (a *App) saveConfigToFile(config *models.RecognitionConfig) error {
-	// 获取应用根目录
-	appRoot := getAppRootDirectory()
+	// 获取用户配置目录和相对路径
+	userConfigDir, configSubDir := getUserConfigDirectory()
 
 	// 确保配置目录存在
-	configDir := filepath.Join(appRoot, "config")
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		return fmt.Errorf("创建配置目录失败: %v", err)
+	var configFile string
+	if configSubDir == "" {
+		// 用户主目录中的配置
+		configFile = filepath.Join(userConfigDir, "user-config.json")
+	} else {
+		// 项目目录中的配置
+		configDir := filepath.Join(userConfigDir, configSubDir)
+		if err := os.MkdirAll(configDir, 0755); err != nil {
+			return fmt.Errorf("创建配置目录失败: %v", err)
+		}
+		configFile = filepath.Join(configDir, "user-config.json")
 	}
-
-	// 保存配置文件
-	configFile := filepath.Join(configDir, "user-config.json")
 	configData, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return fmt.Errorf("序列化配置失败: %v", err)

@@ -227,9 +227,9 @@ audio-recognizer/
 │   ├── index.html                   # HTML模板
 │   └── package.json                 # 前端依赖
 ├── 📁 models/                       # Whisper模型文件
-├── 📁 config/                       # 配置文件
-│   ├── user-config.json            # 用户配置
-│   └── templates.json               # AI优化模板
+├── 📁 config/                       # 配置文件（开发环境）
+│   ├── user-config.json            # 用户配置文件
+│   └── templates.json               # AI优化模板配置
 ├── 📁 scripts/                      # 工具脚本
 │   ├── download-models.sh           # 模型下载脚本
 │   ├── generate-icons.sh            # 图标生成脚本
@@ -244,37 +244,99 @@ audio-recognizer/
 
 ## ⚙️ 配置系统
 
-### 用户配置 (config/user-config.json)
+### 🔧 配置文件保存规则
+
+听声辨字应用采用智能环境检测机制，根据运行环境自动选择配置保存位置：
+
+#### 📂 开发环境配置位置
+当应用检测到项目开发环境（存在 `go.mod` 和 `wails.json` 文件）时：
+```
+📁 项目根目录/config/
+├── 📄 user-config.json     # 主配置文件
+└── 📄 templates.json       # AI优化模板
+```
+
+#### 📂 生产环境配置位置
+当应用独立部署（如安装在 Applications 目录）时：
+```
+📁 ~/Library/Application Support/听声辨字/
+├── 📄 user-config.json     # 主配置文件
+├── 📄 templates.json       # AI优化模板（自动复制）
+└── 📁 models/              # Whisper模型目录
+    └── 📁 whisper/
+        └── 📄 ggml-base.bin # 用户下载的模型文件
+```
+
+#### 🔄 自动配置机制
+- **智能检测**：应用启动时自动检测运行环境
+- **模板复制**：生产环境首次运行时自动复制内置AI模板
+- **配置同步**：前端设置变化实时同步到配置文件
+- **路径适配**：模型路径自动适配不同的配置位置
+
+### 📋 配置文件详解
+
+#### 主配置文件 (user-config.json)
 ```json
 {
-  "language": "zh-CN",
-  "modelPath": "./models",
-  "specificModelFile": "",
-  "sampleRate": 16000,
-  "bufferSize": 4000,
-  "confidenceThreshold": 0.5,
-  "maxAlternatives": 1,
-  "enableWordTimestamp": true,
-  "enableNormalization": true,
-  "enableNoiseReduction": false,
-  "aiTemplate": "basic"
+  "language": "zh-CN",                    // 识别语言 (zh-CN, en, ja, ko等)
+  "modelPath": "./models",                 // 模型文件路径（相对或绝对路径）
+  "specificModelFile": "",                  // 指定特定模型文件（留空则自动选择）
+  "sampleRate": 16000,                       // 音频采样率 (Hz)
+  "bufferSize": 4000,                        // 音频处理缓冲区大小
+  "confidenceThreshold": 0.5,                // 置信度阈值 (0.0-1.0)
+  "maxAlternatives": 1,                       // 最大识别候选数量
+  "enableWordTimestamp": true,               // 启用词级时间戳
+  "enableNormalization": true,                // 启用音频标准化处理
+  "enableNoiseReduction": false,             // 启用噪声抑制
+  "aiTemplate": "timestamp_accurate"         // 默认AI优化模板类型
 }
 ```
 
-### AI优化模板 (config/templates.json)
+#### AI优化模板 (templates.json)
 ```json
 {
   "basic": {
-    "name": "基础文本优化",
-    "description": "基础文本清理和格式化",
-    "template": "请优化以下文本..."
+    "name": "基础优化",
+    "description": "基本的文本清理和标点修正",
+    "template": "请优化以下音频识别结果..."
+  },
+  "timestamp_accurate": {
+    "name": "时间精确优化",
+    "description": "以发音接近原则修正，严格保持时间标记准确性",
+    "template": "请对以下带时间标记的语音识别结果进行精确优化..."
   },
   "subtitle": {
-    "name": "字幕制作",
-    "description": "优化字幕格式和时间戳",
-    "template": "请将以下内容优化为字幕格式..."
+    "name": "字幕优化",
+    "description": "专门针对字幕格式的优化",
+    "template": "请将以下音频识别结果优化为适合字幕显示的格式..."
   }
 }
+```
+
+### 💾 配置管理功能
+
+#### 配置保存和加载
+- **自动保存**：用户在界面修改设置后自动保存
+- **实时同步**：前端设置变化立即同步到后端配置文件
+- **安全备份**：重要配置建议定期备份
+
+#### 配置重置
+```bash
+# 删除用户配置目录，恢复默认设置
+rm -rf ~/Library/Application\ Support/听声辨字/
+```
+
+#### 配置迁移
+```bash
+# 从开发环境迁移配置到生产环境
+cp audio-recognizer/config/user-config.json ~/Library/Application\ Support/听声辨字/
+```
+
+### 🔍 配置验证
+应用启动时会显示配置文件路径：
+```
+📂 配置文件路径: /Users/用户名/Library/Application Support/听声辨字/user-config.json
+✅ 已加载用户配置文件
 ```
 
 ## 🎯 使用流程
@@ -354,6 +416,47 @@ sudo apt-get install ffmpeg
 
 # Windows
 # 从 https://ffmpeg.org/download.html 下载
+```
+
+#### 5. 配置文件问题
+
+##### 配置保存位置错误
+**问题**：配置文件保存到了错误的位置
+**解决方案**：
+```bash
+# 检查应用启动日志中的配置路径
+# 开发环境应显示：{项目根目录}/config/user-config.json
+# 生产环境应显示：~/Library/Application Support/听声辨字/user-config.json
+
+# 手动创建用户配置目录（生产环境）
+mkdir -p ~/Library/Application\ Support/听声辨字/
+```
+
+##### 配置文件损坏或丢失
+```bash
+# 恢复默认配置
+rm -rf ~/Library/Application\ Support/听声辨字/
+# 重启应用将自动创建默认配置
+```
+
+##### 模型路径配置错误
+```bash
+# 检查配置文件中的modelPath设置
+# 开发环境示例："modelPath": "./models"
+# 生产环境示例："modelPath": "~/models" 或 "/path/to/models"
+
+# 验证模型文件是否存在
+ls -la ~/Library/Application\ Support/听声辨字/models/whisper/
+```
+
+#### 6. AI优化模板丢失
+```bash
+# 检查AI模板文件
+ls -la ~/Library/Application\ Support/听声辨字/templates.json
+
+# 如果不存在，重启应用会自动复制内置模板
+# 或手动从项目目录复制：
+cp audio-recognizer/config/templates.json ~/Library/Application\ Support/听声辨字/
 ```
 
 ## 📄 许可证
