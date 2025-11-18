@@ -53,10 +53,6 @@
         <div v-if="activeTab === 'original'" class="content-display">
           <div class="result-meta">
             <div class="meta-item">
-              <span class="meta-label">识别时长:</span>
-              <span class="meta-value">{{ formatDuration(resultDuration) }}</span>
-            </div>
-            <div class="meta-item">
               <span class="meta-label">识别语言:</span>
               <span class="meta-value">{{ languageLabel }}</span>
             </div>
@@ -187,10 +183,6 @@ const currentContent = computed(() => {
     return props.recognitionResult?.segments || []
   }
   return ''
-})
-
-const resultDuration = computed(() => {
-  return props.recognitionResult?.duration || 0
 })
 
 const languageLabel = computed(() => {
