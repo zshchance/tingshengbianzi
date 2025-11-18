@@ -48,7 +48,6 @@ const globalSettings = reactive({ ...defaultSettings })
 // UI状态 - 也是单例
 const isLoading = ref(false)
 const showAdvanced = ref(false)
-const isDirty = ref(false)
 
 export function useSettings() {
   // 如果已经存在实例，直接返回
@@ -144,51 +143,47 @@ export function useSettings() {
     }
   }
 
-  // 从localStorage加载设置
+  // 从后端加载设置（完全禁用localStorage）
   const loadSettings = async () => {
     try {
-      // 先从后端加载核心配置
+      // 完全从后端加载配置
       await loadSettingsFromBackend()
 
-      // 然后从localStorage加载UI相关设置
-      const savedSettings = localStorage.getItem('audio-recognizer-settings')
-      if (savedSettings) {
-        const parsed = JSON.parse(savedSettings)
-        console.log('📦 从localStorage加载设置:', parsed)
-        // 只合并UI相关的设置，不要覆盖后端的核心配置
-        Object.assign(globalSettings, {
-          theme: parsed.theme || globalSettings.theme,
-          customModelPath: parsed.customModelPath || globalSettings.customModelPath,
-          maxRecordingDuration: parsed.maxRecordingDuration || globalSettings.maxRecordingDuration,
-          enableRealTimeRecognition: parsed.enableRealTimeRecognition || globalSettings.enableRealTimeRecognition,
-          logLevel: parsed.logLevel || globalSettings.logLevel
-        })
-        console.log('📦 localStorage合并后的 globalSettings.modelPath:', globalSettings.modelPath)
-      } else {
-        console.log('📦 localStorage中没有找到设置')
-      }
-
-      console.log('✅ 设置加载完成:', globalSettings)
-
-      // 设置加载完成后重置 isDirty 状态
-      console.log('🔄 设置加载完成，重置 isDirty 状态')
-      isDirty.value = false
+      console.log('✅ 设置加载完成（仅从后端加载）:', globalSettings)
     } catch (error) {
       console.error('加载设置失败:', error)
       toastStore.showWarning('设置加载失败', '使用默认设置')
     }
   }
 
-  // 保存设置到localStorage
+  // 保存设置到后端（完全禁用localStorage）
   const saveSettings = async () => {
     try {
       isLoading.value = true
 
-      localStorage.setItem('audio-recognizer-settings', JSON.stringify(globalSettings))
-      console.log('💾 设置已保存，重置 isDirty 状态')
-      isDirty.value = false
+      // 保存后端配置
+      console.log('🔧 保存配置到后端...')
+      const backendConfig = {
+        language: globalSettings.recognitionLanguage || 'zh-CN',
+        modelPath: globalSettings.modelPath || './models',
+        specificModelFile: globalSettings.specificModelFile || '',
+        sampleRate: globalSettings.sampleRate || 16000,
+        bufferSize: globalSettings.bufferSize || 4000,
+        confidenceThreshold: globalSettings.confidenceThreshold || 0.5,
+        maxAlternatives: globalSettings.maxAlternatives || 1,
+        enableWordTimestamp: globalSettings.enableWordTimestamp !== false,
+        enableNormalization: globalSettings.enableNormalization !== false,
+        enableNoiseReduction: globalSettings.enableNoiseReduction || false
+      }
 
-      toastStore.showSuccess('设置已保存', '应用设置已更新')
+      const result = await UpdateConfig(JSON.stringify(backendConfig))
+      if (!result.success) {
+        throw new Error(result.error?.message || '后端配置保存失败')
+      }
+
+      console.log('✅ 配置已保存到后端配置文件')
+
+      toastStore.showSuccess('设置已保存', '配置已保存到文件')
 
       return true
     } catch (error) {
@@ -203,7 +198,6 @@ export function useSettings() {
   // 重置设置为默认值
   const resetSettings = () => {
     Object.assign(settings, { ...defaultSettings })
-    isDirty.value = true
     toastStore.showInfo('设置已重置', '已恢复为默认设置')
   }
 
@@ -211,7 +205,6 @@ export function useSettings() {
   const updateSetting = (key, value) => {
     if (globalSettings.hasOwnProperty(key)) {
       globalSettings[key] = value
-      isDirty.value = true
     }
   }
 
@@ -222,7 +215,6 @@ export function useSettings() {
         globalSettings[key] = newSettings[key]
       }
     })
-    isDirty.value = true
   }
 
   // 验证设置
@@ -268,59 +260,12 @@ export function useSettings() {
     applyTheme(newTheme)
   }, { immediate: true })
 
-  // 监听设置变化
-  watch(globalSettings, () => {
-    isDirty.value = true
-  }, { deep: true })
+  // 已移除设置变化监听器，不再需要isDirty机制
 
-  // 自动保存重要设置
-  watch(globalSettings, (newSettings, oldSettings) => {
-    // 只在重要设置改变时自动保存
-    const importantKeys = ['modelPath', 'specificModelFile', 'recognitionLanguage', 'enableWordTimestamp', 'confidenceThreshold', 'customModelPath']
-
-    // 调试：显示所有变化的字段
-    const changedKeys = []
-    importantKeys.forEach(key => {
-      if (newSettings[key] !== oldSettings[key]) {
-        changedKeys.push(`${key}: "${oldSettings[key]}" -> "${newSettings[key]}"`)
-      }
-    })
-
-    if (changedKeys.length > 0) {
-      console.log('🔧 检测到重要设置变化:', changedKeys.join(', '))
-      console.log('🔧 重要设置已更改，自动保存到后端')
-      // 延迟保存，避免频繁保存
-      setTimeout(async () => {
-        try {
-          // 构建后端配置对象
-          const backendConfig = {
-            language: newSettings.recognitionLanguage || 'zh-CN',
-            modelPath: newSettings.modelPath || './models',
-            specificModelFile: newSettings.specificModelFile || '',
-            sampleRate: newSettings.sampleRate || 16000,
-            bufferSize: newSettings.bufferSize || 4000,
-            confidenceThreshold: newSettings.confidenceThreshold || 0.5,
-            maxAlternatives: newSettings.maxAlternatives || 1,
-            enableWordTimestamp: newSettings.enableWordTimestamp !== false,
-            enableNormalization: newSettings.enableNormalization !== false,
-            enableNoiseReduction: newSettings.enableNoiseReduction || false
-          }
-
-          const result = await UpdateConfig(JSON.stringify(backendConfig))
-          if (result.success) {
-            console.log('✅ 配置已保存到后端')
-          } else {
-            console.error('❌ 后端配置保存失败:', result.error?.message)
-          }
-        } catch (error) {
-          console.error('❌ 调用后端配置保存失败:', error)
-        }
-
-        // 同时保存到localStorage
-        await saveSettings()
-      }, 500)
-    }
-  }, { deep: true })
+  // 移除自动保存，改为手动保存模式
+  // watch(globalSettings, (newSettings, oldSettings) => {
+  //   // 自动保存已禁用，用户需要手动点击保存按钮
+  // }, { deep: true })
 
   // 导出设置
   const exportSettings = () => {
@@ -374,7 +319,6 @@ export function useSettings() {
     settings: globalSettings,
     isLoading,
     showAdvanced,
-    isDirty,
     isDarkMode,
 
     // 计算属性

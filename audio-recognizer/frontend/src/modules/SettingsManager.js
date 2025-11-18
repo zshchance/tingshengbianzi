@@ -69,34 +69,16 @@ export class SettingsManager {
      * 加载本地设置
      */
     loadSettings() {
-        try {
-            const savedSettings = localStorage.getItem('audioRecognizerSettings');
-            if (savedSettings) {
-                const parsed = JSON.parse(savedSettings);
-                // 合并设置，保留新增的默认值
-                this.currentSettings = {
-                    ...this.defaultSettings,
-                    ...parsed
-                };
-                console.log('已加载本地设置:', this.currentSettings);
-            } else {
-                console.log('使用默认设置');
-            }
-        } catch (error) {
-            console.error('加载本地设置失败:', error);
-        }
+        console.log('⚠️ 本地设置已禁用，配置由后端统一管理');
+        // 不再从localStorage加载，完全依赖后端配置
     }
 
     /**
-     * 保存本地设置
+     * 保存本地设置（已禁用，配置由后端统一管理）
      */
     saveSettings() {
-        try {
-            localStorage.setItem('audioRecognizerSettings', JSON.stringify(this.currentSettings));
-            console.log('设置已保存到本地存储');
-        } catch (error) {
-            console.error('保存本地设置失败:', error);
-        }
+        console.log('⚠️ 本地设置保存已禁用，配置由后端统一管理');
+        // 不再保存到localStorage，配置由后端统一管理
     }
 
     /**

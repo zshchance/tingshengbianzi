@@ -347,7 +347,7 @@
               </button>
               <button
                 @click="handleSave"
-                :disabled="!isDirty || isLoading"
+                :disabled="isLoading"
                 class="btn btn-primary"
               >
                 {{ isLoading ? '保存中...' : '保存设置' }}
@@ -386,7 +386,6 @@ const {
   settings,
   isLoading,
   showAdvanced,
-  isDirty,
   availableLanguages,
   availableModels,
   exportFormats,
@@ -400,19 +399,9 @@ const {
 
 // 事件处理
 const handleClose = () => {
-  console.log('🔧 handleClose 被调用，isDirty.value:', isDirty.value)
-  if (isDirty.value) {
-    console.log('⚠️ 检测到未保存的更改，显示确认对话框')
-    if (confirm('您有未保存的更改，确定要关闭吗？')) {
-      console.log('✅ 用户确认关闭，emit close 事件')
-      emit('close')
-    } else {
-      console.log('❌ 用户取消关闭')
-    }
-  } else {
-    console.log('✅ 没有未保存的更改，直接 emit close 事件')
-    emit('close')
-  }
+  console.log('🔧 handleClose 被调用')
+  console.log('✅ 直接关闭设置面板（不再检查未保存的更改）')
+  emit('close')
 }
 
 const handleSave = async () => {

@@ -282,67 +282,26 @@ func getAppRootDirectory() string {
 	return exeDir
 }
 
-// getUserConfigDirectory 获取用户配置目录（用于发布版本）
+// getUserConfigDirectory 获取用户配置目录（统一使用项目配置）
 func getUserConfigDirectory() (string, string) {
-	// 检查是否在发布版本中运行
-	exePath, err := os.Executable()
-	if err != nil {
-		return getAppRootDirectory(), "config"
+	// 优先使用项目根目录的配置文件（开发环境和生产环境统一）
+	appRoot := getAppRootDirectory()
+
+	// 检查项目配置目录是否存在
+	projectConfigDir := filepath.Join(appRoot, "config")
+	if _, err := os.Stat(projectConfigDir); err == nil {
+		fmt.Printf("🎯 使用项目配置目录: %s\n", projectConfigDir)
+		return appRoot, "config"
 	}
 
-	exeDir := filepath.Dir(exePath)
-	fmt.Printf("🔍 可执行文件路径: %s\n", exePath)
-	fmt.Printf("🔍 可执行文件目录: %s\n", exeDir)
-
-	// 如果在.app包中，且检测到项目环境，则使用项目目录（开发模式）
-	if strings.Contains(exeDir, ".app/Contents/MacOS") {
-		fmt.Printf("🍎 检测到在.app包中运行\n")
-		appRoot := getAppRootDirectory()
-		fmt.Printf("🔍 项目根目录: %s\n", appRoot)
-
-		// 检查是否真的在项目开发环境中（有项目文件）
-		goModExists := true
-		wailsJsonExists := true
-
-		if _, err := os.Stat(filepath.Join(appRoot, "go.mod")); err != nil {
-			goModExists = false
-		}
-		if _, err := os.Stat(filepath.Join(appRoot, "wails.json")); err != nil {
-			wailsJsonExists = false
-		}
-
-		fmt.Printf("📋 go.mod存在: %v, wails.json存在: %v\n", goModExists, wailsJsonExists)
-
-		if goModExists && wailsJsonExists {
-			// 开发环境：使用项目目录
-			fmt.Printf("🛠️ 使用开发环境配置目录: %s\n", appRoot)
-			return appRoot, "config"
-		}
+	// 如果项目配置目录不存在，创建它
+	if err := os.MkdirAll(projectConfigDir, 0755); err != nil {
+		fmt.Printf("⚠️ 创建项目配置目录失败，回退到应用目录: %v\n", err)
+		return appRoot, ""
 	}
 
-	// 生产环境：使用用户主目录
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		fmt.Printf("❌ 获取用户主目录失败: %v\n", err)
-		// 回退到应用目录
-		fmt.Printf("🔄 回退到应用配置目录: %s\n", exeDir)
-		return exeDir, "config"
-	}
-
-	// 创建用户配置目录：~/Library/Application Support/听声辨字/
-	configDir := filepath.Join(homeDir, "Library", "Application Support", "听声辨字")
-	fmt.Printf("🏠 用户配置目录: %s\n", configDir)
-
-	// 确保目录存在
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		fmt.Printf("❌ 创建用户配置目录失败: %v\n", err)
-		// 如果创建失败，回退到应用目录
-		fmt.Printf("🔄 回退到应用配置目录: %s\n", exeDir)
-		return exeDir, "config"
-	}
-
-	fmt.Printf("✅ 使用生产环境配置目录: %s\n", configDir)
-	return configDir, ""
+	fmt.Printf("✅ 创建并使用项目配置目录: %s\n", projectConfigDir)
+	return appRoot, "config"
 }
 
 // loadDefaultConfig 加载默认配置
