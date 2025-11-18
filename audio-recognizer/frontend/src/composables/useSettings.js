@@ -2,60 +2,72 @@ import { ref, reactive, computed, watch } from 'vue'
 import { useToastStore } from '../stores/toast'
 import { UpdateConfig, GetConfig } from '../../wailsjs/go/main/App.js'
 
+// 真正的单例模式 - 全局状态只在模块级别创建一次
+let singletonInstance = null
+
+// 默认设置
+const defaultSettings = {
+  // 界面设置
+  theme: 'auto', // 'light', 'dark', 'auto'
+  language: 'zh-CN', // 'zh-CN', 'en-US'
+
+  // 识别设置
+  recognitionLanguage: 'zh-CN',
+  modelType: 'default',
+  enableWordTimestamp: true,
+  confidenceThreshold: 0.5,
+
+  // 音频处理
+  sampleRate: 16000,
+  enableNormalization: true,
+  enableNoiseReduction: false,
+
+  // 导出设置
+  defaultExportFormat: 'txt', // 'txt', 'srt', 'vtt', 'json'
+  autoSaveResults: true,
+  exportPath: '',
+
+  // AI优化
+  enableAIOptimization: true,
+  aiTemplate: 'basic', // 'basic', 'detailed', 'subtitle'
+
+  // 模型设置
+  modelPath: './models',
+  customModelPath: '',
+  specificModelFile: '', // 具体的模型文件路径
+
+  // 高级设置
+  maxRecordingDuration: 3600, // 秒
+  enableRealTimeRecognition: false,
+  logLevel: 'info' // 'debug', 'info', 'warning', 'error'
+}
+
+// 全局响应式设置状态 - 只在模块级别创建一次
+const globalSettings = reactive({ ...defaultSettings })
+
+// UI状态 - 也是单例
+const isLoading = ref(false)
+const showAdvanced = ref(false)
+const isDirty = ref(false)
+
 export function useSettings() {
-  const toastStore = useToastStore()
-
-  // 默认设置
-  const defaultSettings = {
-    // 界面设置
-    theme: 'auto', // 'light', 'dark', 'auto'
-    language: 'zh-CN', // 'zh-CN', 'en-US'
-
-    // 识别设置
-    recognitionLanguage: 'zh-CN',
-    modelType: 'default',
-    enableWordTimestamp: true,
-    confidenceThreshold: 0.5,
-
-    // 音频处理
-    sampleRate: 16000,
-    enableNormalization: true,
-    enableNoiseReduction: false,
-
-    // 导出设置
-    defaultExportFormat: 'txt', // 'txt', 'srt', 'vtt', 'json'
-    autoSaveResults: true,
-    exportPath: '',
-
-    // AI优化
-    enableAIOptimization: true,
-    aiTemplate: 'basic', // 'basic', 'detailed', 'subtitle'
-
-    // 模型设置
-    modelPath: './models',
-    customModelPath: '',
-    specificModelFile: '', // 具体的模型文件路径
-
-    // 高级设置
-    maxRecordingDuration: 3600, // 秒
-    enableRealTimeRecognition: false,
-    logLevel: 'info' // 'debug', 'info', 'warning', 'error'
+  // 如果已经存在实例，直接返回
+  if (singletonInstance) {
+    console.log('🔄 返回已存在的settings单例实例')
+    console.log('🔍 已存在实例的settings引用地址:', singletonInstance.settings)
+    console.log('🔍 已存在实例的modelPath:', singletonInstance.settings.modelPath)
+    return singletonInstance
   }
 
-  // 响应式设置状态
-  const settings = reactive({ ...defaultSettings })
-
-  // UI状态
-  const isLoading = ref(false)
-  const showAdvanced = ref(false)
-  const isDirty = ref(false)
+  console.log('🆕 创建新的settings单例实例')
+  const toastStore = useToastStore()
 
   // 计算属性
   const isDarkMode = computed(() => {
-    if (settings.theme === 'auto') {
+    if (globalSettings.theme === 'auto') {
       return window.matchMedia('(prefers-color-scheme: dark)').matches
     }
-    return settings.theme === 'dark'
+    return globalSettings.theme === 'dark'
   })
 
   const availableLanguages = computed(() => [
@@ -104,19 +116,27 @@ export function useSettings() {
         const backendConfig = JSON.parse(configJSON)
         console.log('✅ 从后端加载配置成功:', backendConfig)
 
-        // 只同步后端相关的设置字段
-        settings.language = backendConfig.language || 'zh-CN'
-        settings.modelPath = backendConfig.modelPath || './models'
-        settings.specificModelFile = backendConfig.specificModelFile || ''
-        settings.sampleRate = backendConfig.sampleRate || 16000
-        settings.bufferSize = backendConfig.bufferSize || 4000
-        settings.confidenceThreshold = backendConfig.confidenceThreshold || 0.5
-        settings.maxAlternatives = backendConfig.maxAlternatives || 1
-        settings.enableWordTimestamp = backendConfig.enableWordTimestamp !== false
-        settings.enableNormalization = backendConfig.enableNormalization !== false
-        settings.enableNoiseReduction = backendConfig.enableNoiseReduction || false
+        // 只同步后端相关的设置字段 - 逐个属性更新确保响应性
+        const backendUpdates = {
+          language: backendConfig.language || 'zh-CN',
+          modelPath: backendConfig.modelPath || './models',
+          specificModelFile: backendConfig.specificModelFile || '',
+          sampleRate: backendConfig.sampleRate || 16000,
+          bufferSize: backendConfig.bufferSize || 4000,
+          confidenceThreshold: backendConfig.confidenceThreshold || 0.5,
+          maxAlternatives: backendConfig.maxAlternatives || 1,
+          enableWordTimestamp: backendConfig.enableWordTimestamp !== false,
+          enableNormalization: backendConfig.enableNormalization !== false,
+          enableNoiseReduction: backendConfig.enableNoiseReduction || false
+        }
+
+        // 逐个更新属性以确保响应性
+        Object.keys(backendUpdates).forEach(key => {
+          globalSettings[key] = backendUpdates[key]
+        })
 
         console.log('✅ 后端配置已同步到前端')
+        console.log('🔍 同步后的 globalSettings.modelPath:', globalSettings.modelPath)
       }
     } catch (error) {
       console.error('❌ 从后端加载配置失败:', error)
@@ -134,17 +154,25 @@ export function useSettings() {
       const savedSettings = localStorage.getItem('audio-recognizer-settings')
       if (savedSettings) {
         const parsed = JSON.parse(savedSettings)
+        console.log('📦 从localStorage加载设置:', parsed)
         // 只合并UI相关的设置，不要覆盖后端的核心配置
-        Object.assign(settings, {
-          theme: parsed.theme || settings.theme,
-          customModelPath: parsed.customModelPath || settings.customModelPath,
-          maxRecordingDuration: parsed.maxRecordingDuration || settings.maxRecordingDuration,
-          enableRealTimeRecognition: parsed.enableRealTimeRecognition || settings.enableRealTimeRecognition,
-          logLevel: parsed.logLevel || settings.logLevel
+        Object.assign(globalSettings, {
+          theme: parsed.theme || globalSettings.theme,
+          customModelPath: parsed.customModelPath || globalSettings.customModelPath,
+          maxRecordingDuration: parsed.maxRecordingDuration || globalSettings.maxRecordingDuration,
+          enableRealTimeRecognition: parsed.enableRealTimeRecognition || globalSettings.enableRealTimeRecognition,
+          logLevel: parsed.logLevel || globalSettings.logLevel
         })
+        console.log('📦 localStorage合并后的 globalSettings.modelPath:', globalSettings.modelPath)
+      } else {
+        console.log('📦 localStorage中没有找到设置')
       }
 
-      console.log('✅ 设置加载完成:', settings)
+      console.log('✅ 设置加载完成:', globalSettings)
+
+      // 设置加载完成后重置 isDirty 状态
+      console.log('🔄 设置加载完成，重置 isDirty 状态')
+      isDirty.value = false
     } catch (error) {
       console.error('加载设置失败:', error)
       toastStore.showWarning('设置加载失败', '使用默认设置')
@@ -156,7 +184,8 @@ export function useSettings() {
     try {
       isLoading.value = true
 
-      localStorage.setItem('audio-recognizer-settings', JSON.stringify(settings))
+      localStorage.setItem('audio-recognizer-settings', JSON.stringify(globalSettings))
+      console.log('💾 设置已保存，重置 isDirty 状态')
       isDirty.value = false
 
       toastStore.showSuccess('设置已保存', '应用设置已更新')
@@ -180,8 +209,8 @@ export function useSettings() {
 
   // 更新单个设置项
   const updateSetting = (key, value) => {
-    if (settings.hasOwnProperty(key)) {
-      settings[key] = value
+    if (globalSettings.hasOwnProperty(key)) {
+      globalSettings[key] = value
       isDirty.value = true
     }
   }
@@ -189,8 +218,8 @@ export function useSettings() {
   // 批量更新设置
   const updateSettings = (newSettings) => {
     Object.keys(newSettings).forEach(key => {
-      if (settings.hasOwnProperty(key)) {
-        settings[key] = newSettings[key]
+      if (globalSettings.hasOwnProperty(key)) {
+        globalSettings[key] = newSettings[key]
       }
     })
     isDirty.value = true
@@ -201,18 +230,18 @@ export function useSettings() {
     const errors = []
 
     // 验证置信度阈值
-    if (settings.confidenceThreshold < 0 || settings.confidenceThreshold > 1) {
+    if (globalSettings.confidenceThreshold < 0 || globalSettings.confidenceThreshold > 1) {
       errors.push('置信度阈值必须在0-1之间')
     }
 
     // 验证采样率
     const validSampleRates = [16000, 22050, 44100, 48000]
-    if (!validSampleRates.includes(settings.sampleRate)) {
+    if (!validSampleRates.includes(globalSettings.sampleRate)) {
       errors.push('采样率必须是支持的值')
     }
 
     // 验证最大录音时长
-    if (settings.maxRecordingDuration <= 0) {
+    if (globalSettings.maxRecordingDuration <= 0) {
       errors.push('最大录音时长必须大于0')
     }
 
@@ -235,17 +264,17 @@ export function useSettings() {
   }
 
   // 监听主题变化
-  watch(() => settings.theme, (newTheme) => {
+  watch(() => globalSettings.theme, (newTheme) => {
     applyTheme(newTheme)
   }, { immediate: true })
 
   // 监听设置变化
-  watch(settings, () => {
+  watch(globalSettings, () => {
     isDirty.value = true
   }, { deep: true })
 
   // 自动保存重要设置
-  watch(settings, (newSettings, oldSettings) => {
+  watch(globalSettings, (newSettings, oldSettings) => {
     // 只在重要设置改变时自动保存
     const importantKeys = ['modelPath', 'specificModelFile', 'recognitionLanguage', 'enableWordTimestamp', 'confidenceThreshold', 'customModelPath']
 
@@ -295,7 +324,7 @@ export function useSettings() {
 
   // 导出设置
   const exportSettings = () => {
-    const dataStr = JSON.stringify(settings, null, 2)
+    const dataStr = JSON.stringify(globalSettings, null, 2)
     const dataBlob = new Blob([dataStr], { type: 'application/json' })
     const url = URL.createObjectURL(dataBlob)
 
@@ -339,9 +368,10 @@ export function useSettings() {
     loadSettings()
   }
 
-  return {
-    // 状态
-    settings,
+  // 创建单例实例
+  singletonInstance = {
+    // 状态 - 使用全局设置实例
+    settings: globalSettings,
     isLoading,
     showAdvanced,
     isDirty,
@@ -364,4 +394,8 @@ export function useSettings() {
     importSettings,
     initialize
   }
+
+  console.log('✅ Settings单例实例已创建并缓存')
+  console.log('🔍 单例实例settings引用地址:', singletonInstance.settings)
+  return singletonInstance
 }

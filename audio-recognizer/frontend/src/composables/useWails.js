@@ -373,7 +373,7 @@ export function useWails() {
       ])
 
       console.log('Wails连接初始化成功')
-      toastStore.showSuccess('连接成功', 'Wails后端连接已建立')
+      // toastStore.showSuccess('连接成功', 'Wails后端连接已建立') // 禁用启动提示
 
     } catch (error) {
       console.error('Wails初始化失败:', error)

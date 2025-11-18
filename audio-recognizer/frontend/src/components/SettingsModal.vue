@@ -381,7 +381,7 @@ const emit = defineEmits(['close', 'save'])
 
 const toastStore = useToastStore()
 
-// 使用设置composable
+// 使用设置composable（现在会使用全局实例）
 const {
   settings,
   isLoading,
@@ -400,11 +400,17 @@ const {
 
 // 事件处理
 const handleClose = () => {
+  console.log('🔧 handleClose 被调用，isDirty.value:', isDirty.value)
   if (isDirty.value) {
+    console.log('⚠️ 检测到未保存的更改，显示确认对话框')
     if (confirm('您有未保存的更改，确定要关闭吗？')) {
+      console.log('✅ 用户确认关闭，emit close 事件')
       emit('close')
+    } else {
+      console.log('❌ 用户取消关闭')
     }
   } else {
+    console.log('✅ 没有未保存的更改，直接 emit close 事件')
     emit('close')
   }
 }
@@ -500,7 +506,11 @@ const browseModelPath = async () => {
 
 // 检查当前模型路径
 const checkCurrentModelPath = async () => {
-  if (!settings.modelPath) return
+  console.log('🔍 checkCurrentModelPath 调用时的 settings.modelPath:', settings.modelPath)
+  if (!settings.modelPath) {
+    console.warn('⚠️ settings.modelPath 为空，跳过检查')
+    return
+  }
 
   try {
     modelLoading.value = true
@@ -529,6 +539,10 @@ const openModelDocs = () => {
 
 // 在组件挂载时检查当前模型路径
 onMounted(async () => {
+  console.log('🚀 SettingsModal 组件挂载，props.visible:', props.visible)
+  console.log('🚀 组件挂载时的 settings.modelPath:', settings.modelPath)
+  console.log('🚀 组件挂载时的完整 settings:', settings)
+
   if (props.visible && settings.modelPath) {
     console.log('🔍 组件挂载，检查当前模型路径:', settings.modelPath)
     await checkCurrentModelPath()
@@ -566,8 +580,8 @@ const selectModel = async (model) => {
       try {
         const backendConfig = {
           language: settings.recognitionLanguage || 'zh-CN',
-          modelPath: settings.modelPath || './models',
-          specificModelFile: settings.specificModelFile || '',
+          modelPath: settings.modelPath,
+          specificModelFile: settings.specificModelFile,
           sampleRate: settings.sampleRate || 16000,
           bufferSize: settings.bufferSize || 4000,
           confidenceThreshold: settings.confidenceThreshold || 0.5,
@@ -603,6 +617,7 @@ const selectModel = async (model) => {
 
 // 监听设置模态框的显示状态
 watch(() => props.visible, async (newVisible) => {
+  console.log('🔍 设置模态框显示状态变化:', newVisible, '当前 modelPath:', settings.modelPath)
   if (newVisible && settings.modelPath && !modelInfo.value) {
     console.log('🔍 设置模态框打开，检查模型路径:', settings.modelPath)
     await checkCurrentModelPath()
@@ -610,7 +625,8 @@ watch(() => props.visible, async (newVisible) => {
 })
 
 // 监听模型路径变化
-watch(() => settings.modelPath, async (newPath) => {
+watch(() => settings.modelPath, async (newPath, oldPath) => {
+  console.log('🔄 模型路径变化监听器触发:', { oldPath, newPath })
   if (newPath && props.visible) {
     console.log('🔄 模型路径已更改，重新检查:', newPath)
     await checkCurrentModelPath()
@@ -618,7 +634,7 @@ watch(() => settings.modelPath, async (newPath) => {
     // 路径被清空时清除模型信息
     modelInfo.value = null
   }
-})
+}, { immediate: true }) // 添加 immediate: true 来立即触发一次
 </script>
 
 <style scoped>

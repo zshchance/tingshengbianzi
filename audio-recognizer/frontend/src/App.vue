@@ -1037,9 +1037,9 @@ onMounted(async () => {
     setupBrowserDragDrop()
     console.log('✅ 浏览器拖拽支持已设置')
 
-    toastStore.showSuccess('欢迎', 'Vue组件已完整迁移！v2.0.0', {
-      duration: 2000
-    })
+    // toastStore.showSuccess('欢迎', 'Vue组件已完整迁移！v2.0.0', {
+    //   duration: 2000
+    // }) // 禁用启动欢迎提示
   } catch (error) {
     console.error('❌ 初始化失败:', error)
     toastStore.showError('初始化失败', error.message)
