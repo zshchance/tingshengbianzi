@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -209,6 +210,7 @@ func loadDefaultConfig() *models.RecognitionConfig {
 // RecognitionRequest 识别请求
 type RecognitionRequest struct {
 	FilePath          string                 `json:"filePath"`
+	FileData          string                 `json:"fileData,omitempty"`          // Base64编码的文件数据（拖拽功能使用）
 	Language          string                 `json:"language"`
 	Options           map[string]interface{} `json:"options"`
 	SpecificModelFile string                 `json:"specificModelFile,omitempty"` // 用户指定的具体模型文件
@@ -255,15 +257,18 @@ func (a *App) StartRecognition(request RecognitionRequest) RecognitionResponse {
 		}
 	}
 
-	// 检查文件是否存在
-	if _, err := os.Stat(request.FilePath); os.IsNotExist(err) {
-		return RecognitionResponse{
-			Success: false,
-			Error: models.NewRecognitionError(
-				models.ErrorCodeAudioFileNotFound,
-				"音频文件未找到",
-				request.FilePath,
-			),
+	// 检查文件是否存在（对于拖拽文件，FileData存在时跳过路径检查）
+	if request.FileData == "" {
+		// 只有在没有Base64数据时才检查文件路径
+		if _, err := os.Stat(request.FilePath); os.IsNotExist(err) {
+			return RecognitionResponse{
+				Success: false,
+				Error: models.NewRecognitionError(
+					models.ErrorCodeAudioFileNotFound,
+					"音频文件未找到",
+					request.FilePath,
+				),
+			}
 		}
 	}
 
@@ -324,25 +329,75 @@ func (a *App) performRecognition(request RecognitionRequest, language string) {
 	var result *models.RecognitionResult
 	var err error
 
-	if request.SpecificModelFile != "" {
-		// 使用用户指定的模型文件
-		result, err = a.recognitionService.RecognizeFileWithModel(
-			request.FilePath,
-			language,
-			request.SpecificModelFile,
-			func(progress *models.RecognitionProgress) {
-				a.sendProgressEvent("recognition_progress", progress)
-			},
-		)
+	// 处理拖拽文件（Base64数据）
+	if request.FileData != "" {
+		a.sendProgressEvent("recognition_progress", &models.RecognitionProgress{
+			Status:     "正在处理拖拽文件...",
+			Percentage: 5,
+		})
+
+		// 创建临时文件处理Base64数据
+		tempFile, tempErr := a.createTempFileFromBase64(request.FileData)
+		if tempErr != nil {
+			a.sendProgressEvent("recognition_error", models.NewRecognitionError(
+				models.ErrorCodeFileValidationFailed,
+				"拖拽文件处理失败",
+				tempErr.Error(),
+			))
+			a.sendProgressEvent("recognition_complete", RecognitionResponse{
+				Success: false,
+				Error:   models.NewRecognitionError(models.ErrorCodeFileValidationFailed, "拖拽文件处理失败", tempErr.Error()),
+			})
+			return
+		}
+		defer os.Remove(tempFile) // 清理临时文件
+
+		a.sendProgressEvent("recognition_progress", &models.RecognitionProgress{
+			Status:     "临时文件创建完成，开始识别...",
+			Percentage: 10,
+		})
+
+		// 使用临时文件路径进行识别
+		if request.SpecificModelFile != "" {
+			result, err = a.recognitionService.RecognizeFileWithModel(
+				tempFile,
+				language,
+				request.SpecificModelFile,
+				func(progress *models.RecognitionProgress) {
+					a.sendProgressEvent("recognition_progress", progress)
+				},
+			)
+		} else {
+			result, err = a.recognitionService.RecognizeFile(
+				tempFile,
+				language,
+				func(progress *models.RecognitionProgress) {
+					a.sendProgressEvent("recognition_progress", progress)
+				},
+			)
+		}
 	} else {
-		// 使用默认识别方法
-		result, err = a.recognitionService.RecognizeFile(
-			request.FilePath,
-			language,
-			func(progress *models.RecognitionProgress) {
-				a.sendProgressEvent("recognition_progress", progress)
-			},
-		)
+		// 处理普通文件路径
+		if request.SpecificModelFile != "" {
+			// 使用用户指定的模型文件
+			result, err = a.recognitionService.RecognizeFileWithModel(
+				request.FilePath,
+				language,
+				request.SpecificModelFile,
+				func(progress *models.RecognitionProgress) {
+					a.sendProgressEvent("recognition_progress", progress)
+				},
+			)
+		} else {
+			// 使用默认识别方法
+			result, err = a.recognitionService.RecognizeFile(
+				request.FilePath,
+				language,
+				func(progress *models.RecognitionProgress) {
+					a.sendProgressEvent("recognition_progress", progress)
+				},
+			)
+		}
 	}
 
 	if err != nil {
@@ -1334,4 +1389,29 @@ func formatFileSize(size int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(size)/float64(div), "KMGTPE"[exp])
+}
+
+// createTempFileFromBase64 从Base64数据创建临时文件
+func (a *App) createTempFileFromBase64(base64Data string) (string, error) {
+	// 解码Base64数据
+	fileData, err := base64.StdEncoding.DecodeString(base64Data)
+	if err != nil {
+		return "", fmt.Errorf("Base64解码失败: %v", err)
+	}
+
+	// 创建临时文件
+	tempFile, err := os.CreateTemp("", "audio-*.wav")
+	if err != nil {
+		return "", fmt.Errorf("创建临时文件失败: %v", err)
+	}
+	defer tempFile.Close()
+
+	// 写入数据到临时文件
+	if _, err := tempFile.Write(fileData); err != nil {
+		os.Remove(tempFile.Name())
+		return "", fmt.Errorf("写入临时文件失败: %v", err)
+	}
+
+	fmt.Printf("✅ 临时文件创建成功: %s，大小: %d bytes\n", tempFile.Name(), len(fileData))
+	return tempFile.Name(), nil
 }

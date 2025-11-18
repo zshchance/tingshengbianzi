@@ -187,9 +187,7 @@ const toastStore = useToastStore()
 
 // 使用composables - 保持响应式引用
 const audioFile = useAudioFile()
-const hasFile = audioFile.hasFile
-const currentFile = audioFile.currentFile
-const clearFile = audioFile.clearFile
+const { selectFile, clearFile, currentFile, hasFile, fileInfo } = audioFile
 
 // 调试：监听App组件中接收到的hasFile状态
 watch(hasFile, (newVal) => {
@@ -331,50 +329,54 @@ const startRecognition = async () => {
     return
   }
 
-  // 获取文件路径（使用与原始AudioFileProcessor.js相同的逻辑）
-  let filePath = null
-
-  console.log('🔍 开始获取文件路径，检查文件对象:', {
+  console.log('🔍 开始处理文件，检查是否为拖拽文件:', {
     file: currentFile.value.file,
+    isDragged: currentFile.value.isDragged,
     hasPath: !!currentFile.value.file.path,
     hasName: !!currentFile.value.file.name,
     fileName: currentFile.value.file.name
   })
 
-  // 使用与原始AudioFileProcessor.js相同的路径解析逻辑
-  // path: file.path || file.webkitRelativePath || file.name
+  let filePath = null
+  let fileData = null
 
-  // 先尝试获取完整路径
-  let pathFound = false
+  // 检查是否为拖拽文件
+  if (currentFile.value.isDragged || (currentFile.value.file && !currentFile.value.file.path && currentFile.value.file.name)) {
+    console.log('📁 处理拖拽文件，转换为Base64')
 
-  if (currentFile.value.file.path) {
-    filePath = currentFile.value.file.path
-    pathFound = true
-    console.log('📁 使用直接文件路径:', filePath)
-  } else if (currentFile.value.file.webkitRelativePath) {
-    filePath = currentFile.value.file.webkitRelativePath
-    pathFound = true
-    console.log('📁 使用相对路径:', filePath)
+    try {
+      // 将拖拽的文件转换为Base64
+      fileData = await fileToBase64(currentFile.value.file)
+      console.log('✅ 文件已转换为Base64，大小:', fileData.length)
+      toastStore.showInfo('处理拖拽文件', `正在处理音频文件: ${currentFile.value.file.name}`)
+    } catch (error) {
+      console.error('❌ 文件转换失败:', error)
+      toastStore.showError('文件处理失败', `无法处理拖拽的文件: ${error.message}`)
+      return
+    }
+  } else {
+    // 处理常规选择的文件，尝试获取完整路径
+    if (currentFile.value.file.path) {
+      filePath = currentFile.value.file.path
+      console.log('📁 使用直接文件路径:', filePath)
+    } else if (currentFile.value.file.webkitRelativePath) {
+      filePath = currentFile.value.file.webkitRelativePath
+      console.log('📁 使用相对路径:', filePath)
+    }
+
+    // 如果仍然没有路径，使用文件对话框重新选择
+    if (!filePath) {
+      console.log('⚠️ 文件缺少完整路径，请使用文件对话框重新选择')
+      toastStore.showWarning('需要重新选择文件', '文件缺少完整路径，请使用"选择文件"按钮重新选择')
+      return
+    }
   }
 
-  // 如果没有路径，但有文件名，需要使用Wails文件对话框获取完整路径
-  if (!pathFound && currentFile.value.file.name) {
-    console.log('⚠️ 拖拽文件缺少完整路径，使用文件对话框重新选择')
-
-    // 显示提示并提示用户使用文件对话框
-    toastStore.showWarning('需要重新选择文件', '拖拽的文件缺少完整路径，请使用"选择文件"按钮重新选择音频文件')
-
-    // 清除当前文件，强制用户重新选择
-    currentFile.value = null
-    audioFile.clearFile()
-    return
-  } else if (!pathFound) {
-    console.log('❌ 无法获取任何文件标识')
-    toastStore.showError('文件路径错误', '无法获取文件标识，请重新选择文件')
-    return
-  }
-
-  console.log('✅ 最终使用的文件路径/标识:', filePath)
+  console.log('✅ 文件处理完成:', {
+    filePath: filePath,
+    hasFileData: !!fileData,
+    fileName: currentFile.value.file.name
+  })
 
   try {
     isProcessing.value = true
@@ -397,6 +399,7 @@ const startRecognition = async () => {
 
     const recognitionRequest = {
       filePath: filePath,
+      fileData: fileData, // 添加Base64文件数据支持拖拽功能
       language: settings.recognitionLanguage || 'zh-CN', // 从设置中获取，默认中文
       specificModelFile: settings.specificModelFile || '', // 添加用户指定的模型文件
       options: {
@@ -491,21 +494,31 @@ const setupBrowserDragDrop = () => {
                     fileName.match(/\.(mp3|wav|m4a|aac|ogg|flac)$/i)
 
       if (isAudio) {
-        console.log('✅ 确认为音频文件，开始处理')
+        console.log('✅ 确认为音频文件，开始处理拖拽文件')
 
-        // 检查文件是否有完整路径
-        if (file.path || file.webkitRelativePath) {
-          // 有完整路径，直接处理
-          console.log('📁 文件有完整路径，直接处理')
-          await handleFileSelect(file)
-        } else {
-          // 没有完整路径，显示提示并打开文件选择对话框
-          console.log('⚠️ 拖拽文件缺少完整路径，使用文件对话框重新选择')
-          toastStore.showWarning('需要重新选择文件', '拖拽的文件缺少完整路径，请使用"选择文件"按钮重新选择音频文件')
-          // 清除可能的文件状态
-          if (currentFile.value) {
-            audioFile.clearFile()
-          }
+        // 创建一个模拟的文件对象来处理拖拽的文件
+        const dragFile = {
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          lastModified: file.lastModified,
+          // 对于拖拽文件，我们将使用文件内容而不是路径
+          isDragged: true,
+          file: file // 保存原始File对象
+        }
+
+        try {
+          // 处理拖拽的文件（不依赖于文件路径）
+          console.log('📁 处理拖拽的音频文件:', dragFile.name)
+
+          // 使用 useAudioFile composable 的 selectFile 方法来处理拖拽文件
+          await selectFile(file)
+
+          toastStore.showSuccess('文件拖拽成功', `已加载音频文件: ${dragFile.name}`)
+
+        } catch (error) {
+          console.error('❌ 处理拖拽文件时出错:', error)
+          toastStore.showError('文件处理失败', `处理文件 ${dragFile.name} 时出错: ${error.message}`)
         }
       } else {
         console.log('❌ 不是音频文件')
@@ -674,7 +687,7 @@ const handleFileSelect = async (file) => {
   try {
     toastStore.showInfo('处理文件', `正在处理文件 "${file.name}"...`)
 
-    // 创建文件信息对象
+    // 创建文件信息对象，标记是否为拖拽文件
     currentFile.value = {
       hasFile: true,
       fileName: file.name,
@@ -683,7 +696,8 @@ const handleFileSelect = async (file) => {
       durationFormatted: '计算中...',
       selectedAt: new Date(),
       size: file.size,
-      type: file.type
+      type: file.type,
+      isDragged: !file.path && file instanceof File // 如果没有path属性且是File对象，则为拖拽文件
     }
 
     // 获取文件路径（在Wails中，拖拽文件有file.path属性）
@@ -750,6 +764,23 @@ const formatFileSize = (bytes) => {
   const i = Math.floor(Math.log(bytes) / Math.log(k))
 
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+// 将文件转换为Base64编码
+const fileToBase64 = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result
+      // 移除数据URL前缀，只保留Base64数据
+      const base64Data = result.split(',')[1]
+      resolve(base64Data)
+    }
+    reader.onerror = (error) => {
+      reject(error)
+    }
+    reader.readAsDataURL(file)
+  })
 }
 
 

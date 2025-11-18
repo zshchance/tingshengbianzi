@@ -2,6 +2,7 @@ export namespace main {
 	
 	export class RecognitionRequest {
 	    filePath: string;
+	    fileData?: string;
 	    language: string;
 	    options: Record<string, any>;
 	    specificModelFile?: string;
@@ -13,6 +14,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.filePath = source["filePath"];
+	        this.fileData = source["fileData"];
 	        this.language = source["language"];
 	        this.options = source["options"];
 	        this.specificModelFile = source["specificModelFile"];

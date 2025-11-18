@@ -162,12 +162,13 @@ export function useAudioFile() {
       const duration = await getAudioDuration(file)
       console.log('✅ 音频时长获取成功:', { duration, formatted: formatDuration(duration) })
 
-      // 保存文件信息
+      // 保存文件信息，保留拖拽标记
       const fileInfo = {
         file,
         duration,
         durationFormatted: formatDuration(duration),
-        selectedAt: new Date()
+        selectedAt: new Date(),
+        isDragged: file.isDragged || (!file.path && file instanceof File)
       }
 
       console.log('💾 准备保存文件信息:', fileInfo)

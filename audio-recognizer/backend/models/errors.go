@@ -60,4 +60,5 @@ const (
 	ErrorCodeFFmpegNotFound     = "FFMPEG_NOT_FOUND"
 	ErrorCodePermissionDenied   = "PERMISSION_DENIED"
 	ErrorCodeDiskSpaceFull      = "DISK_SPACE_FULL"
+	ErrorCodeFileValidationFailed = "FILE_VALIDATION_FAILED"
 )
