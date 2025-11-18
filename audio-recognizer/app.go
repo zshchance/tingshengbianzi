@@ -155,7 +155,16 @@ func (a *App) StartRecognition(request RecognitionRequest) RecognitionResponse {
 
 	// 确保模型已加载
 	if !a.recognitionService.IsModelLoaded(language) {
-		if err := a.recognitionService.LoadModel(language, a.config.ModelPath); err != nil {
+		// 确定模型路径：优先使用用户指定的模型文件所在目录
+		modelPath := a.config.ModelPath
+		if request.SpecificModelFile != "" {
+			// 从用户指定的模型文件路径中提取目录
+			modelDir := filepath.Dir(request.SpecificModelFile)
+			modelPath = modelDir
+			fmt.Printf("使用用户指定模型的目录: %s\n", modelPath)
+		}
+
+		if err := a.recognitionService.LoadModel(language, modelPath); err != nil {
 			return RecognitionResponse{
 				Success: false,
 				Error: models.NewRecognitionError(
@@ -462,7 +471,48 @@ func (a *App) SelectModelFile() map[string]interface{} {
 
 // isValidWhisperModel 验证是否为有效的Whisper模型文件
 func (a *App) isValidWhisperModel(fileName string) bool {
-	validModels := []string{
+	// 支持的模式匹配
+	validPatterns := []string{
+		// 标准模型
+		"ggml-tiny.bin",
+		"ggml-base.bin",
+		"ggml-small.bin",
+		"ggml-medium.bin",
+		"ggml-large.bin",
+
+		// 版本化模型
+		"ggml-large-v1.bin",
+		"ggml-large-v2.bin",
+		"ggml-large-v3.bin",
+
+		// Turbo变体模型
+		"ggml-tiny*.bin",
+		"ggml-base*.bin",
+		"ggml-small*.bin",
+		"ggml-medium*.bin",
+		"ggml-large*.bin",
+
+		// 英文专用模型
+		"ggml-tiny.en.bin",
+		"ggml-base.en.bin",
+		"ggml-small.en.bin",
+		"ggml-medium.en.bin",
+		"ggml-large.en.bin",
+
+		// 量化模型 (q4, q5, q8等)
+		"ggml-*.q*.bin",
+		"ggml-*.q4_0.bin",
+		"ggml-*.q4_1.bin",
+		"ggml-*.q5_0.bin",
+		"ggml-*.q5_1.bin",
+		"ggml-*.q8_0.bin",
+
+		// 特殊后缀模型
+		"*.bin", // 最后的兜底模式：任何.bin文件都可能是模型
+	}
+
+	// 精确匹配常见模型
+	exactModels := []string{
 		"ggml-tiny.bin",
 		"ggml-base.bin",
 		"ggml-small.bin",
@@ -471,12 +521,7 @@ func (a *App) isValidWhisperModel(fileName string) bool {
 		"ggml-large-v1.bin",
 		"ggml-large-v2.bin",
 		"ggml-large-v3.bin",
-		// 量化模型
-		"ggml-tiny.q5_1.bin",
-		"ggml-base.q5_1.bin",
-		"ggml-small.q5_1.bin",
-		"ggml-medium.q5_1.bin",
-		"ggml-large.q5_1.bin",
+		"ggml-large-v3-turbo.bin",
 		"ggml-tiny.en.bin",
 		"ggml-base.en.bin",
 		"ggml-small.en.bin",
@@ -484,8 +529,57 @@ func (a *App) isValidWhisperModel(fileName string) bool {
 		"ggml-large.en.bin",
 	}
 
-	for _, validModel := range validModels {
-		if fileName == validModel {
+	for _, exactModel := range exactModels {
+		if fileName == exactModel {
+			return true
+		}
+	}
+
+	// 模式匹配
+	for _, pattern := range validPatterns {
+		matched, _ := filepath.Match(pattern, fileName)
+		if matched {
+			// 额外验证：确保文件名包含模型相关的关键词
+			if a.isValidWhisperModelName(fileName) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// isValidWhisperModelName 验证文件名是否包含有效的Whisper模型关键词
+func (a *App) isValidWhisperModelName(fileName string) bool {
+	// 转换为小写进行匹配
+	lowerFileName := strings.ToLower(fileName)
+
+	// 必须包含的关键词
+	requiredKeywords := []string{"ggml"}
+
+	// 可选的模型大小关键词
+	modelSizes := []string{"tiny", "base", "small", "medium", "large"}
+
+	// 检查是否包含必需关键词
+	for _, keyword := range requiredKeywords {
+		if !strings.Contains(lowerFileName, keyword) {
+			return false
+		}
+	}
+
+	// 检查是否包含至少一个模型大小关键词
+	for _, size := range modelSizes {
+		if strings.Contains(lowerFileName, size) {
+			return true
+		}
+	}
+
+	// 特殊处理其他可能的模型命名
+	specialCases := []string{
+		"whisper", "model", "speech", "recognition",
+	}
+	for _, special := range specialCases {
+		if strings.Contains(lowerFileName, special) {
 			return true
 		}
 	}
@@ -497,48 +591,51 @@ func (a *App) isValidWhisperModel(fileName string) bool {
 func (a *App) scanModelFiles(directory string) []map[string]interface{} {
 	var models []map[string]interface{}
 
-	// 检查Whisper模型文件
-	whisperModels := []string{
-		"ggml-base.bin",
-		"ggml-small.bin",
-		"ggml-medium.bin",
-		"ggml-large.bin",
-		"ggml-large-v1.bin",
-		"ggml-large-v2.bin",
-		"ggml-large-v3.bin",
-		"ggml-tiny.bin",
-	}
-
-	for _, modelFile := range whisperModels {
-		modelPath := filepath.Join(directory, modelFile)
-		if fileInfo, err := os.Stat(modelPath); err == nil {
-			size := fileInfo.Size()
-			sizeStr := a.formatFileSize(size)
-			models = append(models, map[string]interface{}{
-				"name":    modelFile,
-				"path":    modelPath,
-				"type":    "whisper",
-				"size":    size,
-				"sizeStr": sizeStr,
-			})
+	// 扫描目录中的所有文件
+	if entries, err := os.ReadDir(directory); err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".bin") {
+				fileName := entry.Name()
+				if a.isValidWhisperModel(fileName) {
+					modelPath := filepath.Join(directory, fileName)
+					if fileInfo, err := entry.Info(); err == nil {
+						size := fileInfo.Size()
+						sizeStr := a.formatFileSize(size)
+						models = append(models, map[string]interface{}{
+							"name":    fileName,
+							"path":    modelPath,
+							"type":    "whisper",
+							"size":    size,
+							"sizeStr": sizeStr,
+						})
+					}
+				}
+			}
 		}
 	}
 
 	// 检查whisper子目录
 	whisperDir := filepath.Join(directory, "whisper")
 	if dirInfo, err := os.Stat(whisperDir); err == nil && dirInfo.IsDir() {
-		for _, modelFile := range whisperModels {
-			modelPath := filepath.Join(whisperDir, modelFile)
-			if fileInfo, err := os.Stat(modelPath); err == nil {
-				size := fileInfo.Size()
-				sizeStr := a.formatFileSize(size)
-				models = append(models, map[string]interface{}{
-					"name":    filepath.Join("whisper", modelFile),
-					"path":    modelPath,
-					"type":    "whisper",
-					"size":    size,
-					"sizeStr": sizeStr,
-				})
+		if entries, err := os.ReadDir(whisperDir); err == nil {
+			for _, entry := range entries {
+				if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".bin") {
+					fileName := entry.Name()
+					if a.isValidWhisperModel(fileName) {
+						modelPath := filepath.Join(whisperDir, fileName)
+						if fileInfo, err := entry.Info(); err == nil {
+							size := fileInfo.Size()
+							sizeStr := a.formatFileSize(size)
+							models = append(models, map[string]interface{}{
+								"name":    filepath.Join("whisper", fileName),
+								"path":    modelPath,
+								"type":    "whisper",
+								"size":    size,
+								"sizeStr": sizeStr,
+							})
+						}
+					}
+				}
 			}
 		}
 	}

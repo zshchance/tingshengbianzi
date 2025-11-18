@@ -113,50 +113,134 @@ func NewWhisperService(config *models.RecognitionConfig) (*WhisperService, error
 
 // checkWhisperModel 检查Whisper模型文件是否存在
 func (s *WhisperService) checkWhisperModel() bool {
-	possiblePaths := []string{
-		filepath.Join(s.config.ModelPath, "whisper", "ggml-base.bin"),
-		filepath.Join(s.config.ModelPath, "ggml-base.bin"),
-		"./models/whisper/ggml-base.bin",
-		"./models/ggml-base.bin",
-	}
-
-	for _, path := range possiblePaths {
-		if _, err := os.Stat(path); err == nil {
-			fmt.Printf("找到Whisper模型: %s\n", path)
+	// 首先检查是否指定了具体的模型文件
+	if s.config.SpecificModelFile != "" {
+		if _, err := os.Stat(s.config.SpecificModelFile); err == nil {
+			fmt.Printf("找到指定模型文件: %s\n", s.config.SpecificModelFile)
 			return true
 		}
 	}
+
+	// 扫描模型目录中的所有可用模型
+	if entries, err := os.ReadDir(s.config.ModelPath); err == nil {
+		modelCount := 0
+		for _, entry := range entries {
+			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".bin") && s.isValidWhisperModel(entry.Name()) {
+				modelCount++
+			}
+		}
+		if modelCount > 0 {
+			fmt.Printf("找到 %d 个模型文件在目录: %s\n", modelCount, s.config.ModelPath)
+			return true
+		}
+	}
+
+	return false
+}
+
+// isValidWhisperModel 验证文件是否为有效的Whisper模型
+func (s *WhisperService) isValidWhisperModel(fileName string) bool {
+	// 支持的模式匹配
+	validPatterns := []string{
+		// 标准模型
+		"ggml-tiny.bin",
+		"ggml-base.bin",
+		"ggml-small.bin",
+		"ggml-medium.bin",
+		"ggml-large.bin",
+
+		// 版本化模型
+		"ggml-large-v1.bin",
+		"ggml-large-v2.bin",
+		"ggml-large-v3.bin",
+
+		// Turbo变体模型
+		"ggml-tiny*.bin",
+		"ggml-base*.bin",
+		"ggml-small*.bin",
+		"ggml-medium*.bin",
+		"ggml-large*.bin",
+
+		// 英文专用模型
+		"ggml-tiny.en.bin",
+		"ggml-base.en.bin",
+		"ggml-small.en.bin",
+		"ggml-medium.en.bin",
+		"ggml-large.en.bin",
+
+		// 量化模型 (q4, q5, q8等)
+		"ggml-*.q*.bin",
+
+		// 特殊变体模型
+		"ggml-*v*.bin",
+		"ggml-*turbo*.bin",
+		"ggml-*-en.bin",
+		"ggml-*multilingual*.bin",
+	}
+
+	for _, pattern := range validPatterns {
+		matched, _ := filepath.Match(pattern, fileName)
+		if matched {
+			// 额外验证：确保文件名包含模型相关的关键词
+			if s.isValidWhisperModelName(fileName) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// isValidWhisperModelName 验证文件名是否包含有效的Whisper模型关键词
+func (s *WhisperService) isValidWhisperModelName(fileName string) bool {
+	// 转换为小写进行匹配
+	lowerFileName := strings.ToLower(fileName)
+
+	// 必须包含的关键词
+	requiredKeywords := []string{"ggml"}
+
+	// 可选的模型大小关键词
+	modelSizes := []string{"tiny", "base", "small", "medium", "large"}
+
+	// 检查是否包含必需关键词
+	for _, keyword := range requiredKeywords {
+		if !strings.Contains(lowerFileName, keyword) {
+			return false
+		}
+	}
+
+	// 检查是否包含至少一个模型大小关键词
+	for _, size := range modelSizes {
+		if strings.Contains(lowerFileName, size) {
+			return true
+		}
+	}
+
+	// 特殊处理其他可能的模型命名
+	specialCases := []string{
+		"whisper", "model", "speech", "recognition",
+	}
+	for _, special := range specialCases {
+		if strings.Contains(lowerFileName, special) {
+			return true
+		}
+	}
+
 	return false
 }
 
 // LoadModel 加载语音模型（Whisper使用统一模型）
 func (s *WhisperService) LoadModel(language, modelPath string) error {
-	// 检查模型文件是否存在
-	whisperModelPath := filepath.Join(modelPath, "whisper", "ggml-base.bin")
-	if _, err := os.Stat(whisperModelPath); os.IsNotExist(err) {
-		// 尝试其他路径
-		possiblePaths := []string{
-			filepath.Join(modelPath, "ggml-base.bin"),
-			"./models/whisper/ggml-base.bin",
-			"./models/ggml-base.bin",
-		}
+	// 更新配置中的模型路径
+	s.config.ModelPath = modelPath
 
-		found := false
-		for _, path := range possiblePaths {
-			if _, err := os.Stat(path); err == nil {
-				whisperModelPath = path
-				found = true
-				break
-			}
-		}
-
-		if !found {
-			return models.NewRecognitionError(
-				models.ErrorCodeModelNotFound,
-				"Whisper模型未找到",
-				fmt.Sprintf("模型路径: %s", modelPath),
-			)
-		}
+	// 检查是否有可用的模型文件
+	if !s.checkWhisperModel() {
+		return models.NewRecognitionError(
+			models.ErrorCodeModelNotFound,
+			"Whisper模型文件未找到",
+			"请确保在指定的模型目录中有有效的Whisper模型文件(.bin)",
+		)
 	}
 
 	s.modelsLock.Lock()
@@ -164,8 +248,6 @@ func (s *WhisperService) LoadModel(language, modelPath string) error {
 
 	s.models[language] = true
 	s.hasRealModel = true
-
-	fmt.Printf("Whisper模型已准备好: %s\n", whisperModelPath)
 	return nil
 }
 
