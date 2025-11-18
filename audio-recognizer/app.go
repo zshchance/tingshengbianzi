@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
-	"audio-recognizer/backend/models"
-	"audio-recognizer/backend/recognition"
-	"audio-recognizer/backend/audio"
-	"audio-recognizer/backend/utils"
+	"tingshengbianzi/backend/models"
+	"tingshengbianzi/backend/recognition"
+	"tingshengbianzi/backend/audio"
+	"tingshengbianzi/backend/utils"
 )
 
 // App struct

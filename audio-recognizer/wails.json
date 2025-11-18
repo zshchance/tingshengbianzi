@@ -1,13 +1,20 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "audio-recognizer",
-  "outputfilename": "audio-recognizer",
+  "name": "tingshengbianzi",
+  "outputfilename": "tingshengbianzi",
   "frontend:install": "npm install",
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "author": {
-    "name": "zshchance",
-    "email": "978107204@qq.com"
+    "name": "这家伙很懒",
+    "email": "zshchance@qq.com"
+  },
+  "info": {
+    "companyName": "administrator.wiki",
+    "productName": "听声辨字",
+    "productVersion": "1.0.0",
+    "copyright": "© 2025 administrator.wiki",
+    "comments": "智能音频识别工具 - 软件免费，严禁不良商家贩卖获利"
   }
 }

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"audio-recognizer/backend/models"
-	"audio-recognizer/backend/utils"
+	"tingshengbianzi/backend/models"
+	"tingshengbianzi/backend/utils"
 )
 
 // Processor 音频处理器

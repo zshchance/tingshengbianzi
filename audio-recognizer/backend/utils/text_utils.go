@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"audio-recognizer/backend/models"
+	"tingshengbianzi/backend/models"
 )
 
 // 特殊标记类型常量

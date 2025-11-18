@@ -1,4 +1,4 @@
-module audio-recognizer
+module tingshengbianzi
 
 go 1.23
 

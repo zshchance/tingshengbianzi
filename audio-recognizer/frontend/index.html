@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8"/>
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-    <title>Audio Recognizer - 智能音频识别</title>
+    <title>听声辨字 - 智能音频识别工具</title>
     <link rel="stylesheet" href="./src/style.css">
     <link rel="stylesheet" href="./src/app.css">
 </head>
@@ -15,10 +15,13 @@
         <header class="app-header">
             <div class="header-content">
                 <div class="app-title">
-                    <h1>🎵 Audio Recognizer</h1>
+                    <h1>🎵 听声辨字</h1>
                     <p class="subtitle">智能音频识别工具</p>
                 </div>
                 <div class="header-actions">
+                    <button id="aboutBtn" class="btn btn-secondary" title="关于">
+                        ℹ️ 关于
+                    </button>
                     <button id="settingsBtn" class="btn btn-secondary" title="设置">
                         ⚙️ 设置
                     </button>
@@ -278,6 +281,68 @@
             <div class="modal-footer">
                 <button id="saveSettingsBtn" class="btn btn-primary">保存设置</button>
                 <button id="cancelSettingsBtn" class="btn btn-secondary">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 关于弹窗 -->
+    <div class="modal-overlay" id="aboutModal" style="display: none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>ℹ️ 关于听声辨字</h3>
+                <button class="modal-close" id="closeAboutModalBtn">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="about-content">
+                    <div class="about-header">
+                        <h2>🎵 听声辨字</h2>
+                        <p class="version">版本 1.0.0</p>
+                        <p class="description">智能音频识别工具 - 软件免费，严禁不良商家贩卖获利</p>
+                    </div>
+
+                    <div class="about-section">
+                        <h4>🚀 主要功能</h4>
+                        <ul>
+                            <li>支持多种音频格式（MP3、WAV、M4A、AAC等）</li>
+                            <li>基于Whisper引擎的高精度语音识别</li>
+                            <li>支持中英文等多种语言识别</li>
+                            <li>AI智能文本优化</li>
+                            <li>多种导出格式（TXT、SRT、VTT、JSON）</li>
+                            <li>实时识别进度显示</li>
+                        </ul>
+                    </div>
+
+                    <div class="about-section">
+                        <h4>💻 技术栈</h4>
+                        <ul>
+                            <li>前端：Vue.js 3 + Vite</li>
+                            <li>后端：Go + Wails v2.11.0</li>
+                            <li>语音识别：Whisper.cpp</li>
+                            <li>音频处理：FFmpeg</li>
+                        </ul>
+                    </div>
+
+                    <div class="about-section">
+                        <h4>📧 联系信息</h4>
+                        <div class="contact-info">
+                            <p><strong>作者：</strong>这家伙很懒</p>
+                            <p><strong>邮箱：</strong><a href="mailto:zshchance@qq.com">zshchance@qq.com</a></p>
+                            <p><strong>网站：</strong><a href="https://administrator.wiki" target="_blank">administrator.wiki</a></p>
+                        </div>
+                    </div>
+
+                    <div class="about-section">
+                        <h4>⚠️ 免费声明</h4>
+                        <div class="disclaimer">
+                            <p>本软件完全免费，仅供学习和个人使用。</p>
+                            <p>严禁任何商家或个人将本软件用于商业贩卖或获利。</p>
+                            <p>如遇收费情况，均为诈骗行为，请及时举报。</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="closeAboutBtn" class="btn btn-primary">确定</button>
             </div>
         </div>
     </div>

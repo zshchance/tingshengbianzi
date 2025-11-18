@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"audio-recognizer/backend/models"
-	"audio-recognizer/backend/audio"
-	"audio-recognizer/backend/utils"
+	"tingshengbianzi/backend/models"
+	"tingshengbianzi/backend/audio"
+	"tingshengbianzi/backend/utils"
 )
 
 // formatFileSize 格式化文件大小

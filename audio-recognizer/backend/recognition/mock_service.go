@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"audio-recognizer/backend/models"
-	"audio-recognizer/backend/audio"
+	"tingshengbianzi/backend/models"
+	"tingshengbianzi/backend/audio"
 )
 
 // MockService 模拟语音识别服务（用于测试）

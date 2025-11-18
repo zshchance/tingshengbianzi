@@ -1,7 +1,8 @@
 {
-  "name": "frontend",
+  "name": "tingshengbianzi-frontend",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "听声辨字 - 智能音频识别工具前端应用",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -14,5 +15,10 @@
   "devDependencies": {
     "vite": "^5.0.0",
     "@vitejs/plugin-vue": "^5.0.0"
-  }
+  },
+  "author": {
+    "name": "这家伙很懒",
+    "email": "zshchance@qq.com"
+  },
+  "homepage": "https://administrator.wiki"
 }

@@ -1,6 +1,6 @@
 package recognition
 
-import "audio-recognizer/backend/models"
+import "tingshengbianzi/backend/models"
 
 // RecognitionService 语音识别服务接口
 type RecognitionService interface {

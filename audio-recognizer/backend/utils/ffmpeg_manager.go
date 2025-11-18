@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"audio-recognizer/backend/models"
+	"tingshengbianzi/backend/models"
 )
 
 // FFmpegManager FFmpeg依赖管理器

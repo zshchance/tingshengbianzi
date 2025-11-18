@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"audio-recognizer/backend/models"
+	"tingshengbianzi/backend/models"
 )
 
 // EmbeddedFFmpegManager 嵌入式FFmpeg管理器
