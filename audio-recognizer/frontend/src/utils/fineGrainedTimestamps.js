@@ -541,7 +541,7 @@ export function generateFineGrainedTimestampedText(segments, options = {}) {
           const timestamp = formatTimestamp(fineSegment.start)
           const line = `${timestamp} ${fineSegment.text}`
           textLines.push(line)
-          console.log(`📝 细颗粒度行 [${index}-${fineIndex}]:`, line)
+          // console.log(`📝 细颗粒度行 [${index}-${fineIndex}]:`, line)
         })
       } else {
         console.warn(`⚠️ Segment ${index} 时间无效:`, { startTime, endTime })

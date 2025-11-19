@@ -460,15 +460,17 @@ export function useWails() {
     // 对于细颗粒度文本，完全保持原始格式，不做任何处理
     // 细颗粒度文本已经是 [HH:MM:SS.mmm] 文本 的格式，不需要清理
 
-    console.log('🔍 processFineGrainedText 输入文本:', text.substring(0, 200))
+    console.log('🔍 processFineGrainedText 输入文本（前200字符）:', text.substring(0, 200))
     console.log('🔍 文本长度:', text.length)
     console.log('🔍 包含换行符数量:', (text.match(/\n/g) || []).length)
+    console.log('🔍 包含时间戳格式数量:', (text.match(/\[\d{2}:\d{2}:\d{2}\.\d{3}\]/g) || []).length)
 
     // 直接返回原始文本，确保换行结构完全保持
     const result = text
 
     console.log('🔍 processFineGrainedText 输出文本长度:', result.length)
     console.log('🔍 输出包含换行符数量:', (result.match(/\n/g) || []).length)
+    console.log('🔍 输出包含时间戳格式数量:', (result.match(/\[\d{2}:\d{2}:\d{2}\.\d{3}\]/g) || []).length)
 
     return result
   }
@@ -495,8 +497,8 @@ export function useWails() {
     Object.entries(variables).forEach(([key, value]) => {
       // 创建特殊的变量映射
       const specialMappings = {
-        'text': 'RECOGNITION_TEXT',
-        'timestampedText': 'RECOGNITION_TEXT',
+        'text': 'ORIGINAL_TEXT',           // 原始纯文本
+        'timestampedText': 'RECOGNITION_TEXT',  // 细颗粒度时间戳文本（优先级高）
         'originalText': 'ORIGINAL_TEXT',
         'language': 'LANGUAGE',
         'duration': 'DURATION',
@@ -506,6 +508,16 @@ export function useWails() {
 
       const upperKey = specialMappings[key] || key.toUpperCase()
       const regex = new RegExp(`【${upperKey}】`, 'g')
+
+      if (upperKey === 'RECOGNITION_TEXT') {
+        console.log('🔧 AI模板填充 【RECOGNITION_TEXT】:')
+        console.log('   - key:', key)
+        console.log('   - value长度:', value.length)
+        console.log('   - 包含换行符数量:', (value.match(/\n/g) || []).length)
+        console.log('   - 包含时间戳数量:', (value.match(/\[\d{2}:\d{2}:\d{2}\.\d{3}\]/g) || []).length)
+        console.log('   - 内容预览（前200字符）:', value.substring(0, 200))
+      }
+
       result = result.replace(regex, value)
     })
 

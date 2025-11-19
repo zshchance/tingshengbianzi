@@ -204,14 +204,8 @@ func (a *App) initializeVoskService() error {
 	// 尝试使用Whisper服务
 	service, err := recognition.NewWhisperService(a.config)
 	if err != nil {
-		fmt.Printf("Whisper服务初始化失败，回退到模拟服务: %v\n", err)
+		fmt.Printf("Whisper服务初始化失败: %v\n", err)
 
-		// 回退到模拟服务
-		mockService, mockErr := recognition.NewMockService(a.config)
-		if mockErr != nil {
-			return fmt.Errorf("语音识别服务初始化完全失败: %w", mockErr)
-		}
-		a.recognitionService = mockService
 		return nil
 	}
 
@@ -345,11 +339,21 @@ func getApplicationType() ApplicationType {
 func isDevelopmentEnvironment(exeDir string) bool {
 	// 1. 优先检查是否在临时构建目录中（wails dev的特征）
 	if strings.Contains(exeDir, "build") || strings.Contains(exeDir, "bin") {
-		// 如果在build/bin目录中，进一步检查父目录是否包含项目文件
-		parentDir := filepath.Dir(filepath.Dir(exeDir)) // build的父目录
-		if isProjectDirectory(parentDir) {
-			fmt.Printf("🎯 在构建目录中检测到项目根目录: %s\n", parentDir)
-			return true
+		// 对于Wails dev的.app结构，需要向上查找更多层级
+		// 从 .../build/bin/tingshengbianzi.app/Contents/MacOS 向上查找
+		currentDir := exeDir
+		for i := 0; i < 8; i++ { // 增加查找层级以处理.app结构
+			if strings.Contains(currentDir, "build") {
+				parentDir := filepath.Dir(currentDir)
+				if isProjectDirectory(parentDir) {
+					fmt.Printf("🎯 在构建目录中检测到项目根目录: %s\n", parentDir)
+					return true
+				}
+			}
+			currentDir = filepath.Dir(currentDir)
+			if currentDir == "/" || currentDir == "." {
+				break
+			}
 		}
 	}
 

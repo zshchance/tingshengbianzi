@@ -165,8 +165,49 @@ const currentContent = computed(() => {
 
   let content = ''
   if (activeTabValue === 'original') {
-    // 原始结果只显示纯文本，不带时间戳
-    content = result?.text || ''
+    // 原始结果显示后端Whisper识别的原始结果（不使用前端细颗粒度拆分）
+    // 使用后端的originalTimestampedText，这是基于原始segments生成的
+    if (result?.originalTimestampedText && result.originalTimestampedText.length > 0) {
+      console.log('🔧 使用后端原始时间戳文本（基于原始segments）')
+      content = result.originalTimestampedText
+      console.log('✅ 使用后端原始结果，内容长度:', content.length, '行数:', content.split('\n').length)
+      console.log('🔍 内容预览（前200字符）:', content.substring(0, 200))
+    } else if (result?.segments && result.segments.length > 0) {
+      // 备选方案：基于原始segments重建（不使用前端拆分）
+      console.log('⚠️ 没有originalTimestampedText，基于原始segments重建')
+      const lines = result.segments.map((segment, index) => {
+        const startTime = formatTimestamp(parseFloat(segment.start) || 0)
+        const text = segment.text || ''
+        return `${startTime} ${text}`
+      })
+      content = lines.join('\n')
+      console.log('✅ 基于原始segments重建完成，内容长度:', content.length, '行数:', lines.length)
+    } else {
+      console.log('⚠️ 没有原始segments数据')
+      content = result?.text || ''
+    }
+
+    // 调试原始结果显示
+    console.log('🔍 原始结果标签页调试信息:', {
+      hasResult: !!result,
+      hasText: !!result?.text,
+      hasTimestampedText: !!result?.timestampedText,
+      hasOriginalTimestampedText: !!result?.originalTimestampedText,
+      hasSegments: !!result?.segments,
+      segmentsCount: result?.segments?.length || 0,
+      textLength: result?.text?.length || 0,
+      timestampedTextLength: result?.timestampedText?.length || 0,
+      originalTimestampedTextLength: result?.originalTimestampedText?.length || 0,
+      textPreview: result?.text?.substring(0, 200) || '无内容',
+      timestampedTextPreview: result?.timestampedText?.substring(0, 200) || '无内容',
+      originalTimestampedTextPreview: result?.originalTimestampedText?.substring(0, 200) || '无内容',
+      segmentsPreview: result?.segments ? `前3个segments: ${JSON.stringify(result.segments.slice(0, 3))}` : '无segments',
+      textLineBreaks: (result?.text?.match(/\n/g) || []).length,
+      timestampedTextLineBreaks: (result?.timestampedText?.match(/\n/g) || []).length,
+      originalTimestampedTextLineBreaks: (result?.originalTimestampedText?.match(/\n/g) || []).length,
+      usingOriginal: !!result?.originalTimestampedText,
+      contentSource: content === result?.originalTimestampedText ? 'backendOriginal' : content.includes(result?.segments ? 'segments' : '') ? 'segmentsRebuilt' : 'unknown'
+    })
   } else if (activeTabValue === 'ai') {
     // AI标签页不使用currentContent，有自己独立的显示逻辑
     content = 'ai-optimized'
@@ -219,15 +260,18 @@ const subtitleSegments = computed(() => {
 })
 
 const formattedOriginalContent = computed(() => {
-  // 原始结果只显示纯文本，不处理时间戳
-  let text = props.recognitionResult?.text || ''
-  if (!text) return ''
+  // 原始结果基于segments数据生成，与字幕模式数据来源保持一致
+  const segments = props.recognitionResult?.segments || []
+  if (segments.length === 0) return ''
 
-  return text
-    .split('\n')
-    .filter(line => line.trim())
-    .map(line => `<p>${line.trim()}</p>`)
-    .join('')
+  // 基于segments重建时间戳文本，格式化为HTML
+  const lines = segments.map((segment, index) => {
+    const startTime = formatTimestamp(parseFloat(segment.start) || 0)
+    const text = segment.text || ''
+    return `<p><span class="timestamp">${startTime}</span> ${text}</p>`
+  })
+
+  return lines.join('')
 })
 
 const formattedAIContent = computed(() => {

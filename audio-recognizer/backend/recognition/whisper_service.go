@@ -132,7 +132,7 @@ func NewWhisperService(config *models.RecognitionConfig) (*WhisperService, error
 		service.hasRealModel = true
 		service.models["default"] = true
 	} else {
-		utils.LogWarn("未检测到Whisper模型文件，将使用模拟识别服务")
+		utils.LogError("未检测到Whisper模型文件，无法进行语音识别")
 	}
 
 	utils.LogInfo("Whisper语音识别服务初始化完成")
@@ -310,15 +310,12 @@ func (s *WhisperService) RecognizeFile(audioPath string, language string, progre
 	}
 
 	if !s.hasRealModel {
-		utils.LogWarn("没有真实模型，使用模拟识别服务")
-		// 如果没有真实模型，回退到模拟识别
-		result, err := s.fallbackRecognition(audioPath, language, progressCallback)
-		if err != nil {
-			utils.LogError("模拟识别失败: %v", err)
-		} else {
-			utils.LogInfo("模拟识别完成，结果长度: %d", len(result.Text))
-		}
-		return result, err
+		utils.LogError("没有真实Whisper模型，无法进行语音识别")
+		return nil, models.NewRecognitionError(
+			models.ErrorCodeModelNotFound,
+			"没有找到Whisper模型文件",
+			"请下载Whisper模型文件到models目录或配置正确的模型路径",
+		)
 	}
 
 	utils.LogInfo("使用真实Whisper CLI进行识别")
@@ -1013,17 +1010,6 @@ func (s *WhisperService) convertToSimplified(text string) string {
 	return result
 }
 
-// fallbackRecognition 回退到模拟识别
-func (s *WhisperService) fallbackRecognition(audioPath string, language string, progressCallback func(*models.RecognitionProgress)) (*models.RecognitionResult, error) {
-	// 使用MockService的模拟识别逻辑
-	mockService, err := NewMockService(s.config)
-	if err != nil {
-		return nil, err
-	}
-	defer mockService.Close()
-
-	return mockService.RecognizeFile(audioPath, language, progressCallback)
-}
 
 // GetSupportedLanguages 获取支持的语言列表
 func (s *WhisperService) GetSupportedLanguages() []string {

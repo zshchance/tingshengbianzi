@@ -172,7 +172,7 @@ import { useToastStore } from './stores/toast'
 import { useAudioFile } from './composables/useAudioFile'
 import { useWails } from './composables/useWails'
 import { useSettings } from './composables/useSettings'
-import { generateFineGrainedTimestampedText } from './utils/timeFormatter'
+import { generateFineGrainedTimestampedText, formatTimestamp } from './utils/timeFormatter'
 import { generateFineGrainedTimestampedText as generateEnhancedTimestamps, optimizeSpeedAnalysis, intelligentDeduplication } from './utils/fineGrainedTimestamps'
 import { generateAIOptimizationPrompt, preprocessText, generateTextQualityReport } from './utils/aiOptimizer'
 // 日志功能已移除 - 使用浏览器控制台进行调试
@@ -380,6 +380,11 @@ const startRecognition = async () => {
   })
 
   try {
+    // 清空之前的识别结果
+    console.log('🧹 开始新识别，清空之前的识别结果')
+    showResults.value = false
+    recognitionResult.value = null
+
     isProcessing.value = true
     console.log('🎯 设置 isProcessing = true')
 
@@ -686,6 +691,11 @@ const handleFileSelect = async (file) => {
   })
 
   try {
+    // 清空之前的识别结果和显示状态
+    console.log('🧹 清空之前的识别结果')
+    showResults.value = false
+    recognitionResult.value = null
+
     toastStore.showInfo('处理文件', `正在处理文件 "${file.name}"...`)
 
     // 创建文件信息对象，标记是否为拖拽文件
@@ -1030,7 +1040,33 @@ const setupGlobalWailsEvents = () => {
           segmentsCount: response.result.segments.length
         })
 
-        // 使用细颗粒度时间标记组件生成更精确的时间戳
+        // 后端返回的数据分析：
+        // - result.text: 可能不完整的时间戳文本
+        // - result.segments: 完整的segments数组（与字幕模式相同）
+        // - result.timestampedText: 通常与result.text相同
+        console.log('🔧 后端segments数量:', response.result.segments?.length || 0)
+        console.log('🔧 后端result.text长度:', response.result.text?.length || 0)
+        console.log('🔧 后端result.timestampedText长度:', response.result.timestampedText?.length || 0)
+        console.log('🔧 segments预览:', JSON.stringify(response.result.segments?.slice(0, 2) || []))
+
+        // 基于segments重建完整的时间戳文本（确保覆盖所有内容）
+        let completeTimestampedText = ''
+        if (response.result.segments && response.result.segments.length > 0) {
+          const lines = response.result.segments.map((segment, index) => {
+            const startTime = formatTimestamp(segment.start)
+            const text = segment.text || ''
+            return `${startTime} ${text}`
+          })
+          completeTimestampedText = lines.join('\n')
+        }
+
+        console.log('🔧 基于segments重建的完整时间戳文本长度:', completeTimestampedText.length)
+        console.log('🔧 重建的文本预览:', completeTimestampedText.substring(0, 300))
+
+        // 保存完整的时间戳文本供原始结果标签页使用
+        response.result.originalTimestampedText = completeTimestampedText
+
+        // 使用细颗粒度时间标记组件生成更精确的时间戳（这是前端细化处理）
         response.result.timestampedText = generateEnhancedTimestamps(
           response.result.segments,
           {
@@ -1043,6 +1079,9 @@ const setupGlobalWailsEvents = () => {
             )
           }
         )
+
+        console.log('🔧 前端细颗粒度时间戳文本长度:', response.result.timestampedText.length)
+        console.log('🔧 细颗粒度时间戳文本预览:', response.result.timestampedText.substring(0, 300))
 
         console.log('✅ 细颗粒度时间戳生成完成:', {
           timestampedTextLength: response.result.timestampedText?.length || 0,
