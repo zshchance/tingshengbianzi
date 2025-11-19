@@ -1483,6 +1483,48 @@ func (a *App) SelectAudioFile() map[string]interface{} {
 	}
 }
 
+// GetAudioDuration 获取音频文件的真实时长
+func (a *App) GetAudioDuration(filePath string) map[string]interface{} {
+	if filePath == "" {
+		return map[string]interface{}{
+			"success": false,
+			"error":   "文件路径不能为空",
+		}
+	}
+
+	// 检查文件是否存在
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return map[string]interface{}{
+			"success": false,
+			"error":   "文件不存在",
+		}
+	}
+
+	// 创建音频处理器
+	processor, err := audio.NewProcessor()
+	if err != nil {
+		return map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("创建音频处理器失败: %v", err),
+		}
+	}
+
+	// 获取音频时长
+	duration, err := processor.GetAudioDuration(filePath)
+	if err != nil {
+		return map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("获取音频时长失败: %v", err),
+		}
+	}
+
+	return map[string]interface{}{
+		"success":  true,
+		"duration": duration,
+		"filePath": filePath,
+	}
+}
+
 // ExportResult 导出识别结果
 func (a *App) ExportResult(resultJSON, format, outputPath string) RecognitionResponse {
 	var result models.RecognitionResult

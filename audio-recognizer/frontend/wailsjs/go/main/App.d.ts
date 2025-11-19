@@ -6,6 +6,8 @@ export function ExportResult(arg1:string,arg2:string,arg3:string):Promise<main.R
 
 export function GetAITemplates():Promise<Record<string, any>>;
 
+export function GetAudioDuration(arg1:string):Promise<Record<string, any>>;
+
 export function GetConfig():Promise<string>;
 
 export function GetModelInfo(arg1:string):Promise<Record<string, any>>;

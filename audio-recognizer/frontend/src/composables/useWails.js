@@ -360,6 +360,31 @@ export function useWails() {
   }
 
   /**
+   * 获取音频文件的真实时长
+   */
+  const getAudioDuration = async (filePath) => {
+    try {
+      console.log('🎵 开始获取音频文件真实时长:', filePath)
+      const result = await App.GetAudioDuration(filePath)
+
+      if (result && result.success) {
+        console.log('✅ 获取音频时长成功:', {
+          duration: result.duration,
+          filePath: result.filePath
+        })
+        return result
+      } else {
+        console.error('❌ 获取音频时长失败:', result?.error)
+        throw new Error(result?.error || '获取音频时长失败')
+      }
+
+    } catch (error) {
+      console.error('获取音频时长失败:', error)
+      throw error
+    }
+  }
+
+  /**
    * 获取所有AI提示词模板
    */
   const getAITemplates = async () => {
@@ -575,6 +600,7 @@ export function useWails() {
     getConfig,
     updateConfig,
     exportResult,
+    getAudioDuration,
     getAITemplates,
     generateAIPrompt,
     initialize,

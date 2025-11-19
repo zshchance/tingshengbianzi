@@ -218,6 +218,7 @@ const {
   stopRecognition: wailsStopRecognition,
   selectAudioFile: wailsSelectAudioFile,
   getRecognitionStatus,
+  getAudioDuration,
   formatAIText,
   generateAIPrompt,
   initialize: initializeWails,
@@ -583,7 +584,7 @@ const processDroppedFile = async (file) => {
 
     // 尝试获取音频时长
     try {
-      const duration = await getAudioDuration(file)
+      const duration = await getBrowserAudioDuration(file)
       fileInfo.duration = duration
       fileInfo.formattedDuration = formatDuration(duration)
     } catch (error) {
@@ -628,8 +629,8 @@ const processDroppedFile = async (file) => {
   }
 }
 
-// 获取音频时长（参考老版本AudioFileProcessor的实现）
-const getAudioDuration = (file) => {
+// 获取音频时长（浏览器方式，参考老版本AudioFileProcessor的实现）
+const getBrowserAudioDuration = (file) => {
   return new Promise((resolve, reject) => {
     const audio = new Audio()
     let timeoutId = null
@@ -718,26 +719,29 @@ const handleFileSelect = async (file) => {
     // 格式化文件大小
     const sizeFormatted = formatFileSize(file.size)
 
-    // 尝试获取音频时长
+    // 立即从后端获取准确的音频时长
     try {
-      console.log('🎵 开始获取音频时长...')
-      const duration = await getAudioDuration(file)
-      console.log('🎵 音频时长获取成功:', duration, '秒')
+      console.log('🎵 开始从后端获取音频文件时长:', filePath)
+      const durationResult = await getAudioDuration(filePath)
 
-      if (duration && duration > 0) {
-        currentFile.value.duration = duration
-        currentFile.value.durationFormatted = formatTime(duration)
-        console.log('🎵 时长格式化完成:', currentFile.value.durationFormatted)
+      if (durationResult && durationResult.success && durationResult.duration > 0) {
+        const accurateDuration = durationResult.duration
+        console.log('🎵 后端音频时长获取成功:', accurateDuration, '秒')
+
+        currentFile.value.duration = accurateDuration
+        currentFile.value.durationFormatted = formatTime(accurateDuration)
+        console.log('🎵 文件时长已更新:', currentFile.value.durationFormatted)
       } else {
-        throw new Error('获取到的时长为0或无效')
+        console.warn('⚠️ 后端获取时长失败，使用估算:', durationResult?.error)
+        // 备选方案：使用估算时长
+        const estimatedDuration = estimateDurationFromSize(file.size, file.name)
+        currentFile.value.duration = estimatedDuration
+        currentFile.value.durationFormatted = formatTime(estimatedDuration)
       }
     } catch (durationError) {
-      console.warn('⚠️ 前端获取音频时长失败:', durationError.message)
-
-      // 如果前端获取失败，尝试从文件大小估算
+      console.warn('⚠️ 获取音频时长异常，使用估算:', durationError.message)
+      // 备选方案：使用估算时长
       const estimatedDuration = estimateDurationFromSize(file.size, file.name)
-      console.log('📊 使用估算时长:', estimatedDuration, '秒')
-
       currentFile.value.duration = estimatedDuration
       currentFile.value.durationFormatted = formatTime(estimatedDuration)
     }
@@ -882,30 +886,31 @@ const handleOpenFileDialog = async () => {
         hasPath: !!result.file.path
       })
 
-      // 尝试获取音频时长
-      if (result.file.size && result.file.name) {
-        try {
-          console.log('🎵 开始获取Wails选择文件的音频时长...')
+      // 立即从后端获取准确的音频时长
+      try {
+        console.log('🎵 开始从后端获取音频文件时长:', result.file.path)
+        const durationResult = await getAudioDuration(result.file.path)
 
-          // 对于Wails文件，先尝试通过后端获取
-          // 如果失败，使用前端估算
-          const fileSize = result.file.size
-          const fileName = result.file.name
-          const estimatedDuration = estimateDurationFromSize(fileSize, fileName)
+        if (durationResult && durationResult.success && durationResult.duration > 0) {
+          const accurateDuration = durationResult.duration
+          console.log('🎵 后端音频时长获取成功:', accurateDuration, '秒')
 
+          currentFile.value.duration = accurateDuration
+          currentFile.value.durationFormatted = formatTime(accurateDuration)
+          console.log('🎵 文件时长已更新:', currentFile.value.durationFormatted)
+        } else {
+          console.warn('⚠️ 后端获取时长失败，使用估算:', durationResult?.error)
+          // 备选方案：使用估算时长
+          const estimatedDuration = estimateDurationFromSize(result.file.size, result.file.name)
           currentFile.value.duration = estimatedDuration
           currentFile.value.durationFormatted = formatTime(estimatedDuration)
-
-          console.log('🎵 Wails文件时长处理完成:', currentFile.value.durationFormatted)
-        } catch (durationError) {
-          console.warn('⚠️ 处理Wails文件时长失败:', durationError.message)
-          currentFile.value.duration = 0
-          currentFile.value.durationFormatted = '未知'
         }
-      } else {
-        // 如果没有文件大小信息，设为默认值
-        currentFile.value.duration = 0
-        currentFile.value.durationFormatted = '未知'
+      } catch (durationError) {
+        console.warn('⚠️ 获取音频时长异常，使用估算:', durationError.message)
+        // 备选方案：使用估算时长
+        const estimatedDuration = estimateDurationFromSize(result.file.size, result.file.name)
+        currentFile.value.duration = estimatedDuration
+        currentFile.value.durationFormatted = formatTime(estimatedDuration)
       }
 
       toastStore.showSuccess('文件选择成功', `"${result.file.name}" 已准备就绪`)
@@ -1131,6 +1136,8 @@ const setupGlobalWailsEvents = () => {
       showResults.value = true
       progressData.progress = 100
       progressData.status = '识别完成！'
+
+      // 时长已在文件选择时从后端获取，这里不需要再处理
 
       console.log('✅ 识别结果设置完成 - ResultDisplay 组件将显示:', {
         hasRecognitionResult: !!recognitionResult.value,
