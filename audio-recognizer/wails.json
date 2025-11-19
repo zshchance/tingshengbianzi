@@ -13,9 +13,9 @@
   "info": {
     "companyName": "administrator.wiki",
     "productName": "听声辨字",
-    "productVersion": "1.0.0",
+    "productVersion": "2.0.0",
     "copyright": "© 2025 administrator.wiki",
     "comments": "智能音频识别工具 - 软件免费，严禁不良商家贩卖获利"
   },
-  "icon": "frontend/assets/icons/icon-custom.icns"
+  "icon": "build/darwin/icon.icns"
 }

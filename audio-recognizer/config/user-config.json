@@ -1,7 +1,7 @@
 {
   "language": "zh-CN",
   "modelPath": "/Users/zsh/Documents/2025个人工程onair/语言识别/whisper备选模型",
-  "specificModelFile": "/Users/zsh/Documents/2025个人工程onair/语言识别/audio-recognizer/models/whisper/ggml-large-v3-turbo-q8_0.bin",
+  "specificModelFile": "/Users/zsh/Documents/2025个人工程onair/语言识别/whisper备选模型/ggml-large-v3-turbo.bin",
   "sampleRate": 16000,
   "bufferSize": 4000,
   "confidenceThreshold": 0.5,
