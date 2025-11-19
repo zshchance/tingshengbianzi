@@ -73,7 +73,7 @@
 
         <!-- 识别结果显示 -->
         <ResultDisplay
-          :visible="showResults"
+          v-if="showResults && recognitionResult"
           :recognition-result="recognitionResult"
           :is-loading="isProcessing"
           :loading-text="progressData.status"
@@ -219,6 +219,7 @@ const {
   selectAudioFile: wailsSelectAudioFile,
   getRecognitionStatus,
   formatAIText,
+  generateAIPrompt,
   initialize: initializeWails,
   isLoading: wailsLoading
 } = useWails()
@@ -986,7 +987,7 @@ const setupGlobalWailsEvents = () => {
     // 记录原始识别响应（保持兼容性）
     console.log('📋 原始识别响应:', response)
 
-    if (response.success && response.result) {
+    if (response.result && response.success) {
       // 🔧 智能去重处理 - 针对长音频重复识别问题
       if (response.result.segments && response.result.segments.length > 0) {
         const originalSegmentsCount = response.result.segments.length
@@ -1060,82 +1061,46 @@ const setupGlobalWailsEvents = () => {
         console.warn('⚠️ 没有segments数据，无法生成细颗粒度时间戳')
       }
 
-      // 生成AI优化结果（基于细颗粒度时间戳文本）
+      // 生成AI优化结果（前端模板系统）
       if (response.result.timestampedText) {
-        console.log('🤖 开始生成AI优化结果')
+        console.log('🤖 开始生成AI优化结果（前端模板系统）')
 
         try {
-          // 预处理文本
-          const preprocessedText = preprocessText(response.result.timestampedText)
-          console.log('🧹 文本预处理完成')
+          const templateKey = settings.aiTemplate || 'basic'
+          console.log('🔧 使用AI模板类型:', templateKey)
 
-          // 使用后端模板系统生成AI优化提示词
-          let aiPrompt
-          try {
-            // 构建一个临时的RecognitionResult对象用于调用后端API
-            const tempRecognitionResult = {
-              ...response.result,
-              text: preprocessedText // 使用预处理后的文本
-            }
+          // 使用前端生成AI优化提示词
+          const aiResult = await generateAIPrompt(templateKey, response.result)
+          console.log('🔧 AI优化提示词生成完成，长度:', aiResult.prompt.length)
 
-            console.log('🔧 使用AI模板类型:', settings.aiTemplate || 'basic')
-
-            // 调用后端API生成AI优化提示词
-            const aiResult = await formatAIText(
-              JSON.stringify(tempRecognitionResult),
-              settings.aiTemplate || 'basic' // 从用户设置中获取模板类型，默认为basic
-            )
-
-            if (aiResult.success) {
-              aiPrompt = aiResult.prompt
-              console.log('💡 后端AI优化提示词生成完成，长度:', aiPrompt.length)
-            } else {
-              throw new Error('后端AI提示词生成失败: ' + aiResult.error)
-            }
-          } catch (error) {
-            console.warn('🔄 后端AI模板系统调用失败，回退到前端模板:', error.message)
-            // 回退到前端的generateAIOptimizationPrompt函数
-            aiPrompt = generateAIOptimizationPrompt(preprocessedText, {
-              includeBasicOptimization: true,
-              includeMarkerProcessing: true,
-              includeContentOptimization: true,
-              preserveTimestamps: true,
-              customRequirements: '请特别注意保持时间戳的完整性，这是字幕制作的关键信息。'
-            })
-            console.log('💡 前端回退AI优化提示词生成完成，长度:', aiPrompt.length)
+          if (aiResult.success) {
+            response.result.aiOptimizationPrompt = aiResult.prompt
+            console.log('✅ AI优化提示词生成完成')
+          } else {
+            throw new Error('AI优化提示词生成失败')
           }
-          console.log('💡 AI优化提示词生成完成，长度:', aiPrompt.length)
-
-          // 记录AI优化过程到控制台
-          console.log('🤖 AI优化完成:', {
-            originalTextLength: response.result.timestampedText?.length || 0,
-            aiPromptLength: aiPrompt.length,
-            preview: aiPrompt.substring(0, 100) + '...'
-          })
-
-          // 生成文本质量报告
-          const qualityReport = generateTextQualityReport(preprocessedText)
-          console.log('📊 文本质量报告:', qualityReport)
-
-          // 将AI优化提示词存储到结果中（用户可以复制使用）
-          response.result.aiOptimizationPrompt = aiPrompt
-          response.result.preprocessedText = preprocessedText
-          response.result.qualityReport = qualityReport
-
-          console.log('✅ AI优化相关数据生成完成')
         } catch (error) {
           console.error('❌ AI优化处理失败:', error)
           response.result.aiOptimizationPrompt = 'AI优化提示词生成失败: ' + error.message
         }
       } else {
-        console.warn('⚠️ 没有细颗粒度时间戳文本，无法生成AI优化结果')
-        response.result.aiOptimizationPrompt = '请先生成细颗粒度时间戳，然后才能进行AI优化。'
+        console.warn('⚠️ 没有时间戳文本，无法生成AI优化结果')
+        response.result.aiOptimizationPrompt = '请先生成时间戳文本，然后才能进行AI优化。'
       }
 
       recognitionResult.value = response.result
       showResults.value = true
       progressData.progress = 100
       progressData.status = '识别完成！'
+
+      console.log('✅ 识别结果设置完成 - ResultDisplay 组件将显示:', {
+        hasRecognitionResult: !!recognitionResult.value,
+        showResults: showResults.value,
+        textLength: response.result.text?.length || 0,
+        segmentCount: response.result.segments?.length || 0,
+        conditionMet: showResults.value && !!recognitionResult.value
+      })
+
       toastStore.showSuccess('识别完成', '音频识别已成功完成')
 
       // 记录识别完成到控制台

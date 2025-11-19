@@ -6,10 +6,6 @@ export function ExportResult(arg1, arg2, arg3) {
   return window['go']['main']['App']['ExportResult'](arg1, arg2, arg3);
 }
 
-export function FormatAIText(arg1, arg2) {
-  return window['go']['main']['App']['FormatAIText'](arg1, arg2);
-}
-
 export function GetAITemplates() {
   return window['go']['main']['App']['GetAITemplates']();
 }

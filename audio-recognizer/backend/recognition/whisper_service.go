@@ -451,9 +451,11 @@ func (s *WhisperService) realWhisperRecognition(audioPath string, language strin
 
 	// 执行Whisper识别
 	output, err := cmd.CombinedOutput()
+	fmt.Printf("🔍 Whisper CLI 输出: %s\n", string(output))
+
 	if err != nil {
 		errorMsg := fmt.Sprintf("Whisper CLI执行失败: %v\n输出: %s", err, string(output))
-		fmt.Printf("Whisper CLI错误: %s\n", errorMsg)
+		fmt.Printf("❌ Whisper CLI错误: %s\n", errorMsg)
 		// 返回具体的错误信息而不是回退到模拟数据
 		return nil, models.NewRecognitionError(
 			models.ErrorCodeRecognitionFailed,
@@ -462,6 +464,8 @@ func (s *WhisperService) realWhisperRecognition(audioPath string, language strin
 		)
 	}
 
+	fmt.Printf("✅ Whisper CLI 执行成功，输出长度: %d\n", len(output))
+
 	// 解析生成的SRT文件以获取时间戳信息
 	srtFile := strings.TrimSuffix(wavPath, filepath.Ext(wavPath)) + ".srt"
 	defer os.Remove(srtFile) // 清理临时文件
@@ -469,7 +473,7 @@ func (s *WhisperService) realWhisperRecognition(audioPath string, language strin
 	// 检查SRT文件是否存在
 	if _, err := os.Stat(srtFile); os.IsNotExist(err) {
 		errorMsg := fmt.Sprintf("Whisper CLI未生成SRT文件: %s\n命令输出: %s", srtFile, string(output))
-		fmt.Printf("SRT文件错误: %s\n", errorMsg)
+		fmt.Printf("❌ SRT文件错误: %s\n", errorMsg)
 		return nil, models.NewRecognitionError(
 			models.ErrorCodeRecognitionFailed,
 			"Whisper未生成识别结果",
@@ -477,10 +481,21 @@ func (s *WhisperService) realWhisperRecognition(audioPath string, language strin
 		)
 	}
 
+	fmt.Printf("✅ SRT文件生成成功: %s\n", srtFile)
+
+	// 读取SRT文件内容进行调试
+	if srtContent, err := os.ReadFile(srtFile); err == nil {
+		previewLen := 500
+		if len(srtContent) < previewLen {
+			previewLen = len(srtContent)
+		}
+		fmt.Printf("📄 SRT文件内容预览: %s\n", string(srtContent[:previewLen]))
+	}
+
 	result, err := s.parseWhisperOutput(srtFile, audioInfo, language)
 	if err != nil {
 		errorMsg := fmt.Sprintf("解析Whisper输出失败: %v\nSRT文件: %s", err, srtFile)
-		fmt.Printf("解析错误: %s\n", errorMsg)
+		fmt.Printf("❌ 解析错误: %s\n", errorMsg)
 		return nil, models.NewRecognitionError(
 			models.ErrorCodeRecognitionFailed,
 			"解析识别结果失败",
@@ -612,9 +627,39 @@ func (s *WhisperService) parseWhisperOutput(srtFile string, audioInfo *models.Au
 		}
 	}
 
-	result.Text = s.addTimestampsToText(fullText.String(), wordSegments, audioInfo.Duration)
+	fmt.Printf("🔍 调试信息:\n")
+	fmt.Printf("   fullText长度: %d\n", len(fullText.String()))
+	fmt.Printf("   wordSegments数量: %d\n", len(wordSegments))
+	fmt.Printf("   segments数量: %d\n", len(segments))
+	previewLen := 200
+	if len(fullText.String()) < previewLen {
+		previewLen = len(fullText.String())
+	}
+	fmt.Printf("   fullText预览: %s\n", fullText.String()[:previewLen])
+
+	// 从 SRT 内容计算实际音频时长（如果 audioInfo.Duration 为 0）
+	actualDuration := audioInfo.Duration
+	if actualDuration <= 0 && len(segments) > 0 {
+		// 使用最后一个segment的结束时间作为音频时长
+		actualDuration = segments[len(segments)-1].End
+		fmt.Printf("🎯 从SRT计算得到音频时长: %.2f 秒\n", actualDuration)
+	}
+
+	// 重新构建 result.Text 使用正确的音频时长
+	if actualDuration > 0 {
+		result.Text = s.addTimestampsToText(fullText.String(), wordSegments, actualDuration)
+	} else {
+		result.Text = s.addTimestampsToText(fullText.String(), wordSegments, audioInfo.Duration)
+	}
+
 	result.Words = wordSegments
 	result.Segments = segments
+
+	// 设置带时间戳的文本字段（用于前端细颗粒度处理）
+	result.TimestampedText = result.Text
+
+	fmt.Printf("   最终result.Text长度: %d\n", len(result.Text))
+	fmt.Printf("   最终result.TimestampedText长度: %d\n", len(result.TimestampedText))
 
 	// 计算整体置信度
 	if len(wordSegments) > 0 {
@@ -650,7 +695,13 @@ func (s *WhisperService) parseSRTPair(timestampLine string) (float64, float64) {
 
 // addTimestampsToText 在文本中添加时间戳标记
 func (s *WhisperService) addTimestampsToText(text string, words []models.Word, audioDuration float64) string {
+	fmt.Printf("🔍 addTimestampsToText 调试:\n")
+	fmt.Printf("   输入text长度: %d\n", len(text))
+	fmt.Printf("   words数量: %d\n", len(words))
+	fmt.Printf("   audioDuration: %.2f\n", audioDuration)
+
 	if len(words) == 0 {
+		fmt.Printf("   words为空，返回原始text\n")
 		return text
 	}
 
@@ -658,6 +709,7 @@ func (s *WhisperService) addTimestampsToText(text string, words []models.Word, a
 
 	// 使用更精细的时间标记分割逻辑，传入音频时长作为限制
 	timeMarks := s.generateFineTimeMarks(words, audioDuration)
+	fmt.Printf("   生成timeMarks数量: %d\n", len(timeMarks))
 
 	for i, mark := range timeMarks {
 		if i > 0 {
@@ -667,9 +719,17 @@ func (s *WhisperService) addTimestampsToText(text string, words []models.Word, a
 		result.WriteString(timestamp)
 		result.WriteString(" ")
 		result.WriteString(mark.Text)
+
+		textPreview := mark.Text
+	if len(mark.Text) > 50 {
+		textPreview = mark.Text[:50]
+	}
+	fmt.Printf("   处理timeMark %d: %s - %s\n", i, timestamp, textPreview)
 	}
 
-	return result.String()
+	finalResult := result.String()
+	fmt.Printf("   最终结果长度: %d\n", len(finalResult))
+	return finalResult
 }
 
 // generateFineTimeMarks 生成更精细的时间标记

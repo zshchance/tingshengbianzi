@@ -139,6 +139,7 @@ export namespace models {
 	    id: string;
 	    language: string;
 	    text: string;
+	    timestampedText: string;
 	    segments: RecognitionResultSegment[];
 	    words: Word[];
 	    duration: number;
@@ -156,6 +157,7 @@ export namespace models {
 	        this.id = source["id"];
 	        this.language = source["language"];
 	        this.text = source["text"];
+	        this.timestampedText = source["timestampedText"];
 	        this.segments = this.convertValues(source["segments"], RecognitionResultSegment);
 	        this.words = this.convertValues(source["words"], Word);
 	        this.duration = source["duration"];

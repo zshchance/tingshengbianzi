@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	sysruntime "runtime"
 	"tingshengbianzi/backend/models"
 	"tingshengbianzi/backend/recognition"
 	"tingshengbianzi/backend/audio"
@@ -282,26 +283,278 @@ func getAppRootDirectory() string {
 	return exeDir
 }
 
-// getUserConfigDirectory 获取用户配置目录（统一使用项目配置）
+// ApplicationType 定义应用程序运行类型
+type ApplicationType int
+
+const (
+	DevelopmentApp ApplicationType = iota // 开发环境
+	PortableApp                           // 便携版（未安装的.app包）
+	InstalledApp                          // 安装版（已安装应用）
+)
+
+// getUserConfigDirectory 获取用户配置目录（根据运行环境智能选择）
 func getUserConfigDirectory() (string, string) {
-	// 优先使用项目根目录的配置文件（开发环境和生产环境统一）
+	appType := getApplicationType()
+
+	switch appType {
+	case DevelopmentApp:
+		return getDevelopmentConfigDirectory()
+	case PortableApp:
+		return getPortableConfigDirectory()
+	case InstalledApp:
+		return getInstalledConfigDirectory()
+	default:
+		// 兜底策略：使用便携版方案
+		return getPortableConfigDirectory()
+	}
+}
+
+// getApplicationType 检测应用程序运行类型
+func getApplicationType() ApplicationType {
+	exePath, err := os.Executable()
+	if err != nil {
+		fmt.Printf("⚠️ 无法获取可执行文件路径，默认为开发环境: %v\n", err)
+		return DevelopmentApp
+	}
+
+	exeDir := filepath.Dir(exePath)
+
+	// 优先检测是否在开发环境（放在最前面，避免误判）
+	if isDevelopmentEnvironment(exeDir) {
+		fmt.Printf("🔧 检测到开发环境\n")
+		return DevelopmentApp
+	}
+
+	// 检测是否在.app包中（无论是便携版还是安装版）
+	if strings.Contains(exeDir, ".app/Contents/MacOS") {
+		if isInstalledApplication(exeDir) {
+			fmt.Printf("🏠 检测到已安装应用\n")
+			return InstalledApp
+		} else {
+			fmt.Printf("📱 检测到便携版应用（.app包）\n")
+			return PortableApp
+		}
+	}
+
+	// 默认作为便携版处理
+	fmt.Printf("❓ 未知环境，默认作为便携版处理\n")
+	return PortableApp
+}
+
+// isDevelopmentEnvironment 检测是否为开发环境
+func isDevelopmentEnvironment(exeDir string) bool {
+	// 1. 优先检查是否在临时构建目录中（wails dev的特征）
+	if strings.Contains(exeDir, "build") || strings.Contains(exeDir, "bin") {
+		// 如果在build/bin目录中，进一步检查父目录是否包含项目文件
+		parentDir := filepath.Dir(filepath.Dir(exeDir)) // build的父目录
+		if isProjectDirectory(parentDir) {
+			fmt.Printf("🎯 在构建目录中检测到项目根目录: %s\n", parentDir)
+			return true
+		}
+	}
+
+	// 2. 检查当前目录或父目录是否有项目标志文件
+	return isProjectDirectory(exeDir)
+}
+
+// isProjectDirectory 检查是否为项目目录（包含项目标志文件）
+func isProjectDirectory(dir string) bool {
+	searchDir := dir
+	for i := 0; i < 6; i++ { // 最多向上查找6级目录
+		projectMarkers := []string{"wails.json", "go.mod", "main.go", "app.go"}
+		for _, marker := range projectMarkers {
+			if _, err := os.Stat(filepath.Join(searchDir, marker)); err == nil {
+				// 找到项目标志文件，还需要验证这个不是在Applications目录中
+				if !strings.Contains(searchDir, "/Applications/") {
+					return true
+				}
+			}
+		}
+		searchDir = filepath.Dir(searchDir)
+	}
+	return false
+}
+
+// isPortableApplication 检测是否为便携版应用
+func isPortableApplication(exeDir string) bool {
+	// 检查是否在.app包中但不在标准应用程序目录
+	if strings.Contains(exeDir, ".app/Contents/MacOS") {
+		// 不在 /Applications 或 ~/Applications 目录中
+		return !strings.Contains(exeDir, "/Applications/")
+	}
+	return false
+}
+
+// isInstalledApplication 检测是否为已安装应用
+func isInstalledApplication(exeDir string) bool {
+	// 检查是否在标准应用程序目录中
+	if strings.Contains(exeDir, ".app/Contents/MacOS") {
+		return strings.Contains(exeDir, "/Applications/")
+	}
+	return false
+}
+
+// getDevelopmentConfigDirectory 获取开发环境配置目录
+func getDevelopmentConfigDirectory() (string, string) {
 	appRoot := getAppRootDirectory()
 
-	// 检查项目配置目录是否存在
+	// 优先使用项目根目录的config目录
 	projectConfigDir := filepath.Join(appRoot, "config")
 	if _, err := os.Stat(projectConfigDir); err == nil {
-		fmt.Printf("🎯 使用项目配置目录: %s\n", projectConfigDir)
+		fmt.Printf("🎯 使用开发环境配置目录: %s\n", projectConfigDir)
 		return appRoot, "config"
 	}
 
-	// 如果项目配置目录不存在，创建它
+	// 创建config目录
 	if err := os.MkdirAll(projectConfigDir, 0755); err != nil {
-		fmt.Printf("⚠️ 创建项目配置目录失败，回退到应用目录: %v\n", err)
+		fmt.Printf("⚠️ 创建开发配置目录失败，回退到应用目录: %v\n", err)
 		return appRoot, ""
 	}
 
-	fmt.Printf("✅ 创建并使用项目配置目录: %s\n", projectConfigDir)
+	fmt.Printf("✅ 创建开发环境配置目录: %s\n", projectConfigDir)
 	return appRoot, "config"
+}
+
+// getPortableConfigDirectory 获取便携版配置目录
+func getPortableConfigDirectory() (string, string) {
+	// 使用系统临时目录
+	tempDir := os.TempDir()
+	appName := "audio-recognizer"
+	configBaseDir := filepath.Join(tempDir, appName)
+	configDir := filepath.Join(configBaseDir, "config")
+
+	// 创建配置目录
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		fmt.Printf("❌ 创建便携版配置目录失败: %v\n", err)
+		// 兜底：使用当前用户目录
+		homeDir, _ := os.UserHomeDir()
+		fallbackDir := filepath.Join(homeDir, "."+appName)
+		return fallbackDir, ""
+	}
+
+	fmt.Printf("📱 使用便携版配置目录: %s\n", configDir)
+	return configBaseDir, "config"
+}
+
+// getInstalledConfigDirectory 获取安装版配置目录
+func getInstalledConfigDirectory() (string, string) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Printf("❌ 无法获取用户主目录: %v\n", err)
+		// 回退到便携版方案
+		return getPortableConfigDirectory()
+	}
+
+	var configBaseDir string
+
+	// 根据操作系统确定配置目录
+	switch sysruntime.GOOS {
+	case "darwin":
+		// macOS 使用 ~/Library/Application Support
+		configBaseDir = filepath.Join(homeDir, "Library", "Application Support", "audio-recognizer")
+	case "windows":
+		// Windows 使用 %APPDATA%
+		appData := os.Getenv("APPDATA")
+		if appData == "" {
+			// 回退到用户主目录
+			configBaseDir = filepath.Join(homeDir, "AppData", "Roaming", "audio-recognizer")
+		} else {
+			configBaseDir = filepath.Join(appData, "audio-recognizer")
+		}
+	case "linux":
+		// Linux 使用 ~/.config
+		configBaseDir = filepath.Join(homeDir, ".config", "audio-recognizer")
+	default:
+		// 未知系统，使用用户主目录
+		configBaseDir = filepath.Join(homeDir, ".audio-recognizer")
+	}
+
+	configDir := filepath.Join(configBaseDir, "config")
+
+	// 创建配置目录
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		fmt.Printf("❌ 创建安装版配置目录失败: %v\n", err)
+		// 回退到便携版方案
+		return getPortableConfigDirectory()
+	}
+
+	fmt.Printf("🏠 使用安装版配置目录: %s\n", configDir)
+	return configBaseDir, "config"
+}
+
+// getDefaultModelPath 根据应用类型获取默认模型路径
+func getDefaultModelPath(appType ApplicationType) string {
+	switch appType {
+	case DevelopmentApp:
+		// 开发环境：使用项目根目录下的models目录
+		appRoot := getAppRootDirectory()
+		return filepath.Join(appRoot, "models")
+	case PortableApp:
+		// 便携版：使用临时目录下的models目录
+		tempDir := os.TempDir()
+		return filepath.Join(tempDir, "audio-recognizer", "models")
+	case InstalledApp:
+		// 安装版：使用用户数据目录下的models目录（与配置目录保持一致）
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			// 回退方案
+			tempDir := os.TempDir()
+			return filepath.Join(tempDir, "audio-recognizer", "models")
+		}
+
+		var modelPath string
+		switch sysruntime.GOOS {
+		case "darwin":
+			// macOS 使用 ~/Library/Application Support
+			modelPath = filepath.Join(homeDir, "Library", "Application Support", "audio-recognizer", "models")
+		case "windows":
+			// Windows 使用 %APPDATA%
+			appData := os.Getenv("APPDATA")
+			if appData == "" {
+				modelPath = filepath.Join(homeDir, "AppData", "Roaming", "audio-recognizer", "models")
+			} else {
+				modelPath = filepath.Join(appData, "audio-recognizer", "models")
+			}
+		case "linux":
+			// Linux 使用 ~/.config
+			modelPath = filepath.Join(homeDir, ".config", "audio-recognizer", "models")
+		default:
+			// 未知系统，使用用户主目录
+			modelPath = filepath.Join(homeDir, ".audio-recognizer", "models")
+		}
+		return modelPath
+	default:
+		// 默认方案
+		appRoot := getAppRootDirectory()
+		return filepath.Join(appRoot, "models")
+	}
+}
+
+// validateAndFixModelPath 验证并修复模型路径
+func validateAndFixModelPath(config *models.RecognitionConfig) {
+	appType := getApplicationType()
+
+	// 如果模型路径为空或不存在，使用默认路径
+	if config.ModelPath == "" {
+		config.ModelPath = getDefaultModelPath(appType)
+		fmt.Printf("⚠️ 模型路径为空，使用默认路径: %s\n", config.ModelPath)
+		return
+	}
+
+	// 检查模型路径是否存在
+	if _, err := os.Stat(config.ModelPath); err != nil {
+		fmt.Printf("⚠️ 模型路径不存在: %s\n", config.ModelPath)
+		// 尝试使用默认路径
+		defaultPath := getDefaultModelPath(appType)
+		if _, err2 := os.Stat(defaultPath); err2 == nil {
+			config.ModelPath = defaultPath
+			fmt.Printf("✅ 已切换到默认模型路径: %s\n", config.ModelPath)
+		} else {
+			fmt.Printf("❌ 默认模型路径也不存在: %s\n", defaultPath)
+		}
+	} else {
+		fmt.Printf("✅ 模型路径有效: %s\n", config.ModelPath)
+	}
 }
 
 // loadDefaultConfig 加载默认配置
@@ -309,11 +562,13 @@ func loadDefaultConfig() *models.RecognitionConfig {
 	// 获取用户配置目录和相对路径
 	userConfigDir, configSubDir := getUserConfigDirectory()
 
-	// 创建默认配置（使用绝对路径）
-	appRoot := getAppRootDirectory()
+	// 根据环境类型确定默认模型路径
+	appType := getApplicationType()
+	defaultModelPath := getDefaultModelPath(appType)
+
 	defaultConfig := &models.RecognitionConfig{
 		Language:              "zh-CN",
-		ModelPath:             filepath.Join(appRoot, "models"),
+		ModelPath:             defaultModelPath,
 		SpecificModelFile:     "", // 用户指定的具体模型文件
 		SampleRate:            16000,
 		BufferSize:            4000,
@@ -335,6 +590,7 @@ func loadDefaultConfig() *models.RecognitionConfig {
 	}
 
 	fmt.Printf("📂 配置文件路径: %s\n", configFile)
+	appRoot := getAppRootDirectory()
 	fmt.Printf("🎯 应用根目录: %s\n", appRoot)
 	fmt.Printf("📍 默认模型路径: %s\n", defaultConfig.ModelPath)
 
@@ -366,6 +622,9 @@ func loadDefaultConfig() *models.RecognitionConfig {
 	} else {
 		fmt.Printf("ℹ️ 未找到用户配置文件，使用默认配置 (错误: %v)\n", err)
 	}
+
+	// 验证并修复模型路径
+	validateAndFixModelPath(defaultConfig)
 
 	fmt.Printf("🎯 最终配置模型路径: %s\n", defaultConfig.ModelPath)
 	return defaultConfig
@@ -575,6 +834,19 @@ func (a *App) performRecognition(request RecognitionRequest, language string) {
 
 	// 发送完成事件
 	a.sendProgressEvent("recognition_result", result)
+
+	// 调试：检查即将发送到前端的识别结果
+	fmt.Printf("🔍 即将发送到前端的识别结果:\n")
+	fmt.Printf("   result.Text长度: %d\n", len(result.Text))
+	fmt.Printf("   result.Segments数量: %d\n", len(result.Segments))
+	if len(result.Text) > 0 {
+		previewLen := 100
+		if len(result.Text) < previewLen {
+			previewLen = len(result.Text)
+		}
+		fmt.Printf("   result.Text预览: %s\n", result.Text[:previewLen])
+	}
+
 	a.sendProgressEvent("recognition_complete", RecognitionResponse{
 		Success: true,
 		Result:  result,
@@ -644,6 +916,9 @@ func (a *App) UpdateConfig(configJSON string) RecognitionResponse {
 
 	fmt.Printf("✅ 配置解析成功: 语言=%s, 模型路径=%s, 特定模型=%s\n",
 		config.Language, config.ModelPath, config.SpecificModelFile)
+
+	// 验证并修复模型路径
+	validateAndFixModelPath(&config)
 
 	// 保存配置到文件
 	if err := a.saveConfigToFile(&config); err != nil {
@@ -1381,63 +1656,8 @@ func (a *App) GetAITemplates() map[string]interface{} {
 	}
 }
 
-// FormatAIText 使用指定模板格式化AI文本
-func (a *App) FormatAIText(recognitionResultJSON, templateKey string) map[string]interface{} {
-	fmt.Printf("🚀 App.FormatAIText: 开始处理AI文本格式化请求\n")
-	fmt.Printf("📝 请求的模板类型: '%s'\n", templateKey)
-	fmt.Printf("📄 接收到的JSON数据长度: %d 字符\n", len(recognitionResultJSON))
 
-	// 解析识别结果
-	var result models.RecognitionResult
-	if err := json.Unmarshal([]byte(recognitionResultJSON), &result); err != nil {
-		fmt.Printf("❌ App.FormatAIText: JSON解析失败: %v\n", err)
-		return map[string]interface{}{
-			"success": false,
-			"error":   fmt.Sprintf("识别结果解析失败: %v", err),
-		}
-	}
-
-	fmt.Printf("✅ App.FormatAIText: JSON解析成功\n")
-	fmt.Printf("📊 解析后的识别结果:\n")
-	fmt.Printf("   - 文本长度: %d 字符\n", len(result.Text))
-	fmt.Printf("   - 段落数量: %d\n", len(result.Segments))
-	fmt.Printf("   - 词汇数量: %d\n", len(result.Words))
-
-	// 如果文本不为空，显示前100个字符作为预览
-	if len(result.Text) > 0 {
-		preview := result.Text
-		if len(preview) > 100 {
-			preview = preview[:100]
-		}
-		fmt.Printf("   - 文本预览: %s...\n", preview)
-	}
-
-	// 使用模板格式化提示词
-	fmt.Printf("🔧 App.FormatAIText: 调用utils.FormatAIPrompt\n")
-	formattedPrompt := utils.FormatAIPrompt(&result, templateKey)
-
-	fmt.Printf("✅ App.FormatAIText: 格式化完成，返回提示词长度: %d 字符\n", len(formattedPrompt))
-
-	resultMap := map[string]interface{}{
-		"success": true,
-		"prompt":  formattedPrompt,
-	}
-
-	// 输出返回结果的键和长度信息
-	fmt.Printf("📤 App.FormatAIText: 返回结果包含键: %v\n", getMapKeys(resultMap))
-	fmt.Printf("🎯 App.FormatAIText: 处理完成\n")
-
-	return resultMap
-}
-
-// getMapKeys 获取map的所有键（用于调试）
-func getMapKeys(m map[string]interface{}) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	return keys
-}
+// FormatAIText 接口已移除 - AI优化功能暂时不可用
 
 // GetTemplateManagerInfo 获取模板管理器信息
 func (a *App) GetTemplateManagerInfo() map[string]interface{} {

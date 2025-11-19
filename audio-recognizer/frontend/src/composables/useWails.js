@@ -360,29 +360,156 @@ export function useWails() {
   }
 
   /**
-   * 格式化AI优化文本
+   * 获取所有AI提示词模板
    */
-  const formatAIText = async (recognitionResultJSON, templateKey) => {
+  const getAITemplates = async () => {
     try {
-      isLoading.value = true
-      console.log('🤖 调用后端FormatAIText，模板类型:', templateKey)
+      const result = await App.GetAITemplates()
+      console.log('🔧 获取AI模板列表:', result.success ? Object.keys(result.templates) : '失败')
+      return result
+    } catch (error) {
+      console.error('获取AI模板列表失败:', error)
+      toastStore.showError('获取模板失败', error.message)
+      throw error
+    }
+  }
 
-      const result = await App.FormatAIText(recognitionResultJSON, templateKey)
-      console.log('🤖 后端FormatAIText返回结果:', result)
+  /**
+   * 前端填充模板生成AI优化提示词
+   */
+  const generateAIPrompt = async (templateKey, textData) => {
+    try {
+      // 获取所有模板
+      const templatesResult = await getAITemplates()
 
-      if (result.success) {
-        return result
-      } else {
-        throw new Error(result.error || 'AI文本格式化失败')
+      if (!templatesResult.success || !templatesResult.templates[templateKey]) {
+        throw new Error(`模板不存在: ${templateKey}`)
+      }
+
+      const template = templatesResult.templates[templateKey].template
+      console.log('📝 使用模板:', templateKey, '模板内容长度:', template.length)
+
+      // 预处理文本数据
+      const preprocessedText = preprocessText(textData.text || '')
+
+      // 对于细颗粒度时间戳文本，使用保持换行结构的处理方式
+      const fineGrainedText = processFineGrainedText(textData.timestampedText || textData.text || '')
+
+      // 填充模板变量
+      const filledPrompt = fillTemplate(template, {
+        text: preprocessedText,
+        originalText: textData.text || '',
+        timestampedText: fineGrainedText,
+        language: textData.language || 'zh-CN',
+        segmentCount: (textData.segments || []).length,
+        wordCount: (textData.words || []).length,
+        duration: textData.duration || 0,
+        // 可以根据需要添加更多变量
+        timestamp: new Date().toISOString(),
+        model: 'whisper',
+        confidence: textData.confidence || 0.8
+      })
+
+      console.log('✅ 模板填充完成，提示词长度:', filledPrompt.length)
+
+      return {
+        success: true,
+        prompt: filledPrompt,
+        templateKey: templateKey
       }
 
     } catch (error) {
-      console.error('AI文本格式化失败:', error)
-      toastStore.showError('AI文本格式化失败', error.message)
+      console.error('生成AI提示词失败:', error)
       throw error
-    } finally {
-      isLoading.value = false
     }
+  }
+
+  /**
+   * 文本预处理函数
+   */
+  const preprocessText = (text) => {
+    if (!text) return ''
+
+    let processed = text
+
+    // 移除SRT/VTT时间戳格式 (保留中文时间戳)
+    processed = processed.replace(/\d{1,2}:\d{2}:\d{2}[.,]\d{3}\s*-->\s*\d{1,2}:\d{2}:\d{2}[.,]\d{3}/g, '')
+
+    // 移除序号行（包括后面的换行符）
+    processed = processed.replace(/^\d+\s*\n?/gm, '')
+
+    // 移除VTT标记行（包括后面的换行符）
+    processed = processed.replace(/^NOTE.*\n?/gm, '')
+    processed = processed.replace(/^WEBVTT.*\n?/gm, '')
+
+    // 移除多余的空行，但保留正常的段落分隔
+    processed = processed.replace(/\n\s*\n\s*\n/g, '\n\n')
+
+    // 修索单行末尾的空白字符
+    processed = processed.replace(/[ \t]+$/gm, '')
+
+    return processed.trim()
+  }
+
+  /**
+   * 细颗粒度文本处理函数 - 完全保持原始换行结构和格式
+   */
+  const processFineGrainedText = (text) => {
+    if (!text) return ''
+
+    // 对于细颗粒度文本，完全保持原始格式，不做任何处理
+    // 细颗粒度文本已经是 [HH:MM:SS.mmm] 文本 的格式，不需要清理
+
+    console.log('🔍 processFineGrainedText 输入文本:', text.substring(0, 200))
+    console.log('🔍 文本长度:', text.length)
+    console.log('🔍 包含换行符数量:', (text.match(/\n/g) || []).length)
+
+    // 直接返回原始文本，确保换行结构完全保持
+    const result = text
+
+    console.log('🔍 processFineGrainedText 输出文本长度:', result.length)
+    console.log('🔍 输出包含换行符数量:', (result.match(/\n/g) || []).length)
+
+    return result
+  }
+
+  /**
+   * 模板填充函数
+   */
+  const fillTemplate = (template, variables) => {
+    let result = template
+
+    // 支持 {{variable}} 格式的变量
+    Object.entries(variables).forEach(([key, value]) => {
+      const regex = new RegExp(`{{${key}}}`, 'g')
+      result = result.replace(regex, value)
+    })
+
+    // 支持 ${variable} 格式的变量
+    Object.entries(variables).forEach(([key, value]) => {
+      const regex = new RegExp(`\\$\\{${key}\\}`, 'g')
+      result = result.replace(regex, value)
+    })
+
+    // 支持 【VARIABLE】 格式的变量（中文方括号）
+    Object.entries(variables).forEach(([key, value]) => {
+      // 创建特殊的变量映射
+      const specialMappings = {
+        'text': 'RECOGNITION_TEXT',
+        'timestampedText': 'RECOGNITION_TEXT',
+        'originalText': 'ORIGINAL_TEXT',
+        'language': 'LANGUAGE',
+        'duration': 'DURATION',
+        'segmentCount': 'SEGMENT_COUNT',
+        'wordCount': 'WORD_COUNT'
+      }
+
+      const upperKey = specialMappings[key] || key.toUpperCase()
+      const regex = new RegExp(`【${upperKey}】`, 'g')
+      result = result.replace(regex, value)
+    })
+
+    return result
   }
 
   /**
@@ -436,7 +563,8 @@ export function useWails() {
     getConfig,
     updateConfig,
     exportResult,
-    formatAIText,
+    getAITemplates,
+    generateAIPrompt,
     initialize,
     isWailsAvailable,
     cleanupEventListeners

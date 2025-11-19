@@ -495,36 +495,36 @@ export function generateFineGrainedTimestampedText(segments, options = {}) {
   console.log('📝 开始处理segments数量:', segments.length)
 
   segments.forEach((segment, index) => {
-    console.log(`🎯 处理segment ${index}:`, {
-      text: segment.text,
-      start: segment.start,
-      end: segment.end,
-      hasText: !!segment.text,
-      hasStart: segment.start !== undefined,
-      hasEnd: segment.end !== undefined
-    })
+    // console.log(`🎯 处理segment ${index}:`, {
+    //   text: segment.text,
+    //   start: segment.start,
+    //   end: segment.end,
+    //   hasText: !!segment.text,
+    //   hasStart: segment.start !== undefined,
+    //   hasEnd: segment.end !== undefined
+    // })
 
     if (segment.text && segment.start !== undefined && segment.end !== undefined) {
       // 安全的时间转换，处理多种格式
       const startTime = safeTimeStringToSeconds(segment.start)
       const endTime = safeTimeStringToSeconds(segment.end)
 
-      console.log(`⏰ 时间转换 [${index}]:`, {
-        originalStart: segment.start,
-        originalEnd: segment.end,
-        convertedStart: startTime,
-        convertedEnd: endTime,
-        startType: typeof segment.start,
-        endType: typeof segment.end
-      })
+      // console.log(`⏰ 时间转换 [${index}]:`, {
+      //   originalStart: segment.start,
+      //   originalEnd: segment.end,
+      //   convertedStart: startTime,
+      //   convertedEnd: endTime,
+      //   startType: typeof segment.start,
+      //   endType: typeof segment.end
+      // })
 
       if (startTime < endTime) {
-        console.log(`⏰ 生成细颗粒度时间戳 [${index}]:`, {
-          startTime,
-          endTime,
-          duration: endTime - startTime,
-          text: segment.text.trim()
-        })
+        // console.log(`⏰ 生成细颗粒度时间戳 [${index}]:`, {
+        //   startTime,
+        //   endTime,
+        //   duration: endTime - startTime,
+        //   text: segment.text.trim()
+        // })
 
         // 生成细颗粒度时间标记
         const fineSegments = generateFineGrainedTimestamps(
@@ -534,7 +534,7 @@ export function generateFineGrainedTimestampedText(segments, options = {}) {
           options
         )
 
-        console.log(`✨ 生成细颗粒度片段 [${index}]:`, fineSegments.length, '个片段')
+        // console.log(`✨ 生成细颗粒度片段 [${index}]:`, fineSegments.length, '个片段')
 
         // 添加细颗粒度时间戳行
         fineSegments.forEach((fineSegment, fineIndex) => {

@@ -4,15 +4,16 @@ import "time"
 
 // RecognitionResult 语音识别结果
 type RecognitionResult struct {
-	ID          string                `json:"id"`          // 识别结果ID
-	Language    string                `json:"language"`    // 识别语言
-	Text        string                `json:"text"`        // 识别文本
-	Segments    []RecognitionResultSegment `json:"segments"`    // 识别结果段落
-	Words       []Word                `json:"words"`       // 词汇级结果
-	Duration    float64               `json:"duration"`    // 音频时长(秒)
-	Confidence  float64               `json:"confidence"`  // 整体置信度
-	ProcessedAt time.Time             `json:"processedAt"` // 处理时间
-	Metadata    map[string]interface{} `json:"metadata"`   // 元数据
+	ID                string                `json:"id"`                    // 识别结果ID
+	Language          string                `json:"language"`              // 识别语言
+	Text              string                `json:"text"`                  // 识别文本
+	TimestampedText   string                `json:"timestampedText"`       // 带时间戳的识别文本
+	Segments          []RecognitionResultSegment `json:"segments"`        // 识别结果段落
+	Words             []Word                `json:"words"`                 // 词汇级结果
+	Duration          float64               `json:"duration"`              // 音频时长(秒)
+	Confidence        float64               `json:"confidence"`            // 整体置信度
+	ProcessedAt       time.Time             `json:"processedAt"`           // 处理时间
+	Metadata          map[string]interface{} `json:"metadata"`             // 元数据
 }
 
 // RecognitionResultSegment 识别结果段落

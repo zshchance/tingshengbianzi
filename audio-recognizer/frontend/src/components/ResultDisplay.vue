@@ -1,5 +1,5 @@
 <template>
-  <section v-if="visible" class="result-section">
+  <section class="result-section">
     <div class="result-header">
       <div class="result-tabs">
         <button
@@ -48,7 +48,7 @@
       </div>
 
       <!-- 结果显示 -->
-      <div v-else-if="currentContent || hasAIOptimizationData" class="result-display">
+      <div class="result-display">
         <!-- 原始结果 -->
         <div v-if="activeTab === 'original'" class="content-display">
           <div class="result-meta">
@@ -107,13 +107,7 @@
         </div>
       </div>
 
-      <!-- 空状态 -->
-      <div v-else class="result-placeholder">
-        <div class="placeholder-icon">📝</div>
-        <p>等待识别结果...</p>
-        <p class="placeholder-hint">选择音频文件并开始识别后，结果将显示在这里</p>
       </div>
-    </div>
   </section>
 </template>
 
@@ -131,13 +125,9 @@ import {
 // 日志功能已移除 - 使用浏览器控制台进行调试
 
 const props = defineProps({
-  visible: {
-    type: Boolean,
-    default: false
-  },
   recognitionResult: {
     type: Object,
-    default: null
+    required: true
   },
   isLoading: {
     type: Boolean,
@@ -170,19 +160,32 @@ const tabs = [
 
 // 计算属性
 const currentContent = computed(() => {
-  if (activeTab.value === 'original') {
+  const result = props.recognitionResult
+  const activeTabValue = activeTab.value
+
+  let content = ''
+  if (activeTabValue === 'original') {
     // 原始结果只显示纯文本，不带时间戳
-    return props.recognitionResult?.text || ''
-  } else if (activeTab.value === 'ai') {
+    content = result?.text || ''
+  } else if (activeTabValue === 'ai') {
     // AI标签页不使用currentContent，有自己独立的显示逻辑
-    return 'ai-optimized'
-  } else if (activeTab.value === 'fineGrained') {
+    content = 'ai-optimized'
+  } else if (activeTabValue === 'fineGrained') {
     // 细颗粒度显示带高精度时间戳的文本
-    return props.recognitionResult?.timestampedText || ''
-  } else if (activeTab.value === 'subtitle') {
-    return props.recognitionResult?.segments || []
+    content = result?.timestampedText || ''
+  } else if (activeTabValue === 'subtitle') {
+    content = JSON.stringify(result?.segments || [])
   }
-  return ''
+
+  console.log('🔍 currentContent 计算结果:', {
+    activeTab: activeTabValue,
+    content: content,
+    contentLength: content.length,
+    hasText: !!result?.text,
+    textLength: result?.text?.length || 0
+  })
+
+  return content
 })
 
 const languageLabel = computed(() => {
@@ -550,11 +553,21 @@ watch(activeTab, (newTab) => {
 })
 
 // 监听识别结果变化
+// 监控识别结果变化
 watch(() => props.recognitionResult, (newResult) => {
+  console.log('🎯 ResultDisplay 接收到新的识别结果:', {
+    newResult,
+    visible: props.visible,
+    textLength: newResult?.text?.length || 0,
+    segmentCount: newResult?.segments?.length || 0
+  })
+
   if (newResult && activeTab.value === 'ai') {
     startAIOptimization()
   }
 })
+
+// 父组件完全控制显示逻辑，子组件不再需要监听可见性
 
 // 暴露方法给父组件
 defineExpose({
