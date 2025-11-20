@@ -36,7 +36,7 @@ log_step() {
 PROJECT_NAME="tingshengbianzi"
 APP_NAME="听声辨字"
 OUTPUT_DIR="$PROJECT_ROOT/release"
-FFMPEG_DIR="$PROJECT_ROOT/ffmpeg-binaries"
+FFMPEG_DIR="$PROJECT_ROOT/third-party/bin"
 MODELS_DIR="$PROJECT_ROOT/models"
 
 echo -e "${BLUE}🚀 ${APP_NAME} - 完整打包脚本${NC}"
@@ -209,9 +209,9 @@ fi
 log_step "设置可执行权限..."
 chmod 755 "$RELEASE_APP/Contents/MacOS/$PROJECT_NAME"
 chmod 755 "$APP_RESOURCES/whisper-cli"
-if [ -d "$APP_RESOURCES/ffmpeg-binaries" ]; then
-    chmod 755 "$APP_RESOURCES/ffmpeg-binaries/ffmpeg"
-    chmod 755 "$APP_RESOURCES/ffmpeg-binaries/ffprobe"
+if [ -d "$APP_RESOURCES/third-party/bin" ]; then
+        chmod 755 "$APP_RESOURCES/third-party/bin/ffmpeg"
+        chmod 755 "$APP_RESOURCES/third-party/bin/ffprobe"
     log_info "✅ FFmpeg权限设置完成"
 fi
 log_info "✅ 所有必要权限设置完成"
@@ -253,7 +253,7 @@ echo -e "${BLUE}📋 关键文件检查:${NC}"
 KEY_FILES=(
     "$RELEASE_APP/Contents/MacOS/$PROJECT_NAME"
     "$APP_RESOURCES/whisper-cli"
-    "$APP_RESOURCES/ffmpeg-binaries/ffmpeg"
+    "$APP_RESOURCES/third-party/bin/ffmpeg"
     "$APP_RESOURCES/config/user-config.json"
     "$APP_RESOURCES/models-info.txt"
 )
@@ -319,7 +319,7 @@ cat > "$OUTPUT_DIR/README.md" << EOF
 
 1. **权限问题**: 确保应用有执行权限
 2. **模型文件**: 检查 \`Resources/models/whisper/\` 目录下有 \`.bin\` 文件
-3. **FFmpeg问题**: 检查 \`Resources/ffmpeg-binaries/\` 目录下有可执行文件
+3. **FFmpeg问题**: 检查 \`Resources/third-party/bin/\` 目录下有可执行文件
 4. **配置重置**: 删除用户配置文件重新启动应用
 
 ## 版本信息

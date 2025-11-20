@@ -7,7 +7,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-FFMPEG_DIR="$PROJECT_ROOT/ffmpeg-binaries"
+FFMPEG_DIR="$PROJECT_ROOT/third-party/bin"
 
 echo "🔧 开始打包 FFmpeg 依赖..."
 

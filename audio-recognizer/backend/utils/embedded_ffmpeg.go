@@ -77,27 +77,18 @@ func (m *EmbeddedFFmpegManager) tryEmbeddedFFmpeg() (string, string) {
 		{"Resources第三方依赖", filepath.Join(filepath.Dir(exeDir), "Resources", "third-party", "bin")},
 		{"Resources(备用)", filepath.Join(exeDir, "Resources", "third-party", "bin")},
 
-		// 备选：旧版Resources目录
-		{"Resources旧版", filepath.Join(filepath.Dir(exeDir), "Resources", "ffmpeg-binaries")},
-		{"resources目录", filepath.Join(filepath.Dir(exeDir), "resources", "ffmpeg-binaries")},
+		// 备选：旧版Resources目录 (已移除 ffmpeg-binaries 引用)
 
 		// 开发环境：第三方依赖目录
 		{"项目第三方依赖", filepath.Join(filepath.Dir(exeDir), "third-party", "bin")},
 		{"项目第三方依赖(向上)", filepath.Join(filepath.Dir(filepath.Dir(exeDir)), "third-party", "bin")},
 		{"第三方依赖根目录", filepath.Join(".", "third-party", "bin")},
 
-		// 开发环境：旧版项目目录
-		{"项目根目录", filepath.Join(filepath.Dir(exeDir), "ffmpeg-binaries")},
-		{"项目根目录(向上)", filepath.Join(filepath.Dir(filepath.Dir(exeDir)), "ffmpeg-binaries")},
-		{"项目根目录(从app内)", filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(exeDir))), "ffmpeg-binaries")},
+		// 开发环境：旧版项目目录 (已移除 ffmpeg-binaries 引用)
 
-		// 打包环境：其他位置
-		{"同目录", filepath.Join(exeDir, "ffmpeg-binaries")},
-		{"上一级目录", filepath.Join(filepath.Dir(exeDir), "ffmpeg-binaries")},
-		{"上两级目录", filepath.Join(filepath.Dir(filepath.Dir(exeDir)), "ffmpeg-binaries")},
+		// 打包环境：其他位置 (已移除 ffmpeg-binaries 引用)
 
-		// 最后备选：临时目录
-		{"临时目录", filepath.Join(os.TempDir(), "ffmpeg-binaries")},
+		// 最后备选：临时目录 (已移除 ffmpeg-binaries 引用)
 	}
 
 	for _, search := range searchPaths {
@@ -218,8 +209,8 @@ func (m *EmbeddedFFmpegManager) getSourceType() string {
 	exePath, _ := os.Executable()
 	exeDir := filepath.Dir(exePath)
 
-	if m.ffmpegPath == filepath.Join(exeDir, "ffmpeg-binaries", "ffmpeg") ||
-		m.ffmpegPath == filepath.Join(exeDir, "resources", "ffmpeg") {
+	if m.ffmpegPath == filepath.Join(exeDir, "third-party", "bin", "ffmpeg") ||
+		m.ffmpegPath == filepath.Join(exeDir, "resources", "third-party", "bin", "ffmpeg") {
 		return "embedded"
 	}
 

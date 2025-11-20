@@ -151,7 +151,7 @@ release/
 ├── tingshengbianzi-portable/    # 便携版
 │   ├── tingshengbianzi         # 主程序
 │   ├── Resources/              # 资源文件
-│   │   ├── ffmpeg-binaries/    # FFmpeg依赖
+│   │   ├── third-party/bin/    # 第三方依赖 (FFmpeg, Whisper CLI)
 │   │   ├── whisper-cli         # Whisper CLI
 │   │   ├── config/             # 配置文件
 │   │   └── models-info.txt     # 模型说明

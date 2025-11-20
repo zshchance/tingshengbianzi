@@ -62,8 +62,8 @@ fi
 # 4. 检查FFmpeg
 echo ""
 echo "🔍 步骤4: 检查FFmpeg依赖..."
-FFMPEG_PATH="$TARGET_APP/Contents/Resources/ffmpeg-binaries/ffmpeg"
-FFPROBE_PATH="$TARGET_APP/Contents/Resources/ffmpeg-binaries/ffprobe"
+FFMPEG_PATH="$TARGET_APP/Contents/Resources/third-party/bin/ffmpeg"
+FFPROBE_PATH="$TARGET_APP/Contents/Resources/third-party/bin/ffprobe"
 
 if [ -f "$FFMPEG_PATH" ] && [ -f "$FFPROBE_PATH" ]; then
     FFMPEG_SIZE=$(stat -f%z "$FFMPEG_PATH" 2>/dev/null || echo "unknown")
@@ -122,8 +122,8 @@ echo "- [INFO] 找到Whisper CLI: .../Contents/Resources/whisper-cli"
 echo "- [INFO] 检测到Whisper模型文件，将使用真实语音识别"
 echo "- [INFO] 语音识别服务初始化成功"
 echo "- 找到嵌入FFmpeg在 Resources目录"
-echo "- ffmpeg: .../Contents/Resources/ffmpeg-binaries/ffmpeg"
-echo "- ffprobe: .../Contents/Resources/ffmpeg-binaries/ffprobe"
+echo "- ffmpeg: .../Contents/Resources/third-party/bin/ffmpeg"
+echo "- ffprobe: .../Contents/Resources/third-party/bin/ffprobe"
 echo ""
 
 echo -e "${GREEN}🎉 测试准备完成！${NC}"

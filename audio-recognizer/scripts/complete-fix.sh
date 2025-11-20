@@ -72,13 +72,13 @@ if [ -f "$PROJECT_ROOT/scripts/bundle-ffmpeg.sh" ]; then
     # 将FFmpeg复制到应用Resources目录
     echo "📦 复制FFmpeg到应用Resources目录..."
     TARGET_RESOURCES="$PROJECT_ROOT/build/bin/tingshengbianzi.app/Contents/Resources"
-    SOURCE_FFMPEG="$PROJECT_ROOT/ffmpeg-binaries"
+    SOURCE_FFMPEG="$PROJECT_ROOT/third-party/bin"
 
     if [ -d "$SOURCE_FFMPEG" ]; then
-        mkdir -p "$TARGET_RESOURCES/ffmpeg-binaries"
-        cp "$SOURCE_FFMPEG"/* "$TARGET_RESOURCES/ffmpeg-binaries/"
-        chmod +x "$TARGET_RESOURCES/ffmpeg-binaries/ffmpeg"
-        chmod +x "$TARGET_RESOURCES/ffmpeg-binaries/ffprobe"
+        mkdir -p "$TARGET_RESOURCES/third-party/bin"
+    cp "$SOURCE_FFMPEG"/* "$TARGET_RESOURCES/third-party/bin/"
+    chmod +x "$TARGET_RESOURCES/third-party/bin/ffmpeg"
+    chmod +x "$TARGET_RESOURCES/third-party/bin/ffprobe"
         echo -e "${GREEN}✅ FFmpeg复制到应用Resources目录完成${NC}"
     else
         echo -e "${YELLOW}⚠️ FFmpeg源目录不存在，跳过复制${NC}"
@@ -105,7 +105,7 @@ else
 fi
 
 # 检查FFmpeg文件
-TARGET_FFMPEG="$PROJECT_ROOT/build/bin/tingshengbianzi.app/Contents/Resources/ffmpeg-binaries"
+TARGET_FFMPEG="$PROJECT_ROOT/build/bin/tingshengbianzi.app/Contents/Resources/third-party/bin"
 if [ -f "$TARGET_FFMPEG/ffmpeg" ] && [ -f "$TARGET_FFMPEG/ffprobe" ]; then
     FFMPEG_SIZE=$(stat -f%z "$TARGET_FFMPEG/ffmpeg" 2>/dev/null || echo "unknown")
     FFPROBE_SIZE=$(stat -f%z "$TARGET_FFMPEG/ffprobe" 2>/dev/null || echo "unknown")

@@ -12,10 +12,10 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SOURCE_FFMPEG_DIR="$PROJECT_ROOT/ffmpeg-binaries"
+SOURCE_FFMPEG_DIR="$PROJECT_ROOT/third-party/bin"
 TARGET_APP="$PROJECT_ROOT/build/bin/tingshengbianzi.app"
 TARGET_RESOURCES="$TARGET_APP/Contents/Resources"
-TARGET_FFMPEG_DIR="$TARGET_RESOURCES/ffmpeg-binaries"
+TARGET_FFMPEG_DIR="$TARGET_RESOURCES/third-party/bin"
 
 echo -e "${BLUE}🎬 听声辨字 - FFmpeg依赖修复工具${NC}"
 echo "========================================"

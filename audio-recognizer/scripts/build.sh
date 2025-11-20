@@ -143,10 +143,10 @@ prepare_release() {
     # 复制可执行文件
     cp "$PROJECT_ROOT/$OUTPUT_NAME" "$RELEASE_DIR/"
 
-    # 复制FFmpeg依赖（如果存在）
-    if [[ -d "$PROJECT_ROOT/ffmpeg-binaries" ]]; then
-        cp -r "$PROJECT_ROOT/ffmpeg-binaries" "$RELEASE_DIR/"
-        log_info "已复制FFmpeg依赖"
+    # 复制第三方依赖（如果存在）
+    if [[ -d "$PROJECT_ROOT/third-party" ]]; then
+        cp -r "$PROJECT_ROOT/third-party" "$RELEASE_DIR/"
+        log_info "已复制第三方依赖"
     fi
 
     # 复制模型文件（如果存在）
@@ -199,7 +199,7 @@ EOF
 
 如果遇到 FFmpeg 相关错误，请检查：
 1. 确认程序有执行权限
-2. 检查 ffmpeg-binaries 目录是否存在且包含必要的文件
+2. 检查 third-party 目录是否存在且包含必要的文件
 3. 查看控制台输出的详细错误信息
 
 EOF
@@ -232,8 +232,8 @@ create_macos_app() {
     cp "$RELEASE_DIR/audio-recognizer" "$APP_DIR/Contents/MacOS/"
 
     # 复制依赖
-    if [[ -d "$RELEASE_DIR/ffmpeg-binaries" ]]; then
-        cp -r "$RELEASE_DIR/ffmpeg-binaries" "$APP_DIR/Contents/Resources/"
+    if [[ -d "$RELEASE_DIR/third-party" ]]; then
+        cp -r "$RELEASE_DIR/third-party" "$APP_DIR/Contents/Resources/"
     fi
 
     # 复制模型

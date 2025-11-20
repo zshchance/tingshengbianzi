@@ -30,7 +30,7 @@ echo ""
 echo "📦 准备嵌入资源..."
 
 # 使用项目现有的FFmpeg二进制文件
-PROJECT_FFMPEG_DIR="$PROJECT_ROOT/ffmpeg-binaries"
+PROJECT_FFMPEG_DIR="$PROJECT_ROOT/third-party/bin"
 
 if [ -d "$PROJECT_FFMPEG_DIR" ] && [ -f "$PROJECT_FFMPEG_DIR/ffmpeg" ] && [ -f "$PROJECT_FFMPEG_DIR/ffprobe" ]; then
     echo "✅ 使用项目现有的FFmpeg二进制文件"
@@ -48,7 +48,7 @@ if [ -d "$PROJECT_FFMPEG_DIR" ] && [ -f "$PROJECT_FFMPEG_DIR/ffmpeg" ] && [ -f "
     fi
 else
     echo "❌ 项目FFmpeg二进制文件未找到: $PROJECT_FFMPEG_DIR"
-    echo "请确保 ffmpeg-binaries 目录包含 ffmpeg 和 ffprobe 文件"
+    echo "请确保 third-party/bin 目录包含 ffmpeg 和 ffprobe 文件"
     exit 1
 fi
 
