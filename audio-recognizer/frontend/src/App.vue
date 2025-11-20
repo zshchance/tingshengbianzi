@@ -262,24 +262,37 @@ const updateApplicationStatus = async () => {
 
       // 更新模型状态
       if (statusData.modelStatus && statusData.modelStatus.statusText) {
-        let statusText = `模型: ${statusData.modelStatus.statusText}`
+        // 构造新的状态显示格式（单行）
+        let statusText = "模型: 多语言模型已加载"
+
+        // 添加支持的语言数量信息
+        if (statusData.modelStatus.supportedLanguages && statusData.modelStatus.supportedLanguages.length > 0) {
+          const supportedCount = statusData.modelStatus.supportedLanguages.length
+          statusText += ` (支持 ${supportedCount} 种语言)`
+        }
 
         // 添加可用模型数量信息
         if (statusData.modelStatus.availableModels && statusData.modelStatus.totalAvailable) {
           const availableCount = statusData.modelStatus.totalAvailable
-          if (availableCount > 0) {
-            statusText += ` (${availableCount}个可用模型)`
-          }
+          statusText += ` (${availableCount}个可用模型)`
         }
 
-        // 如果有支持的语言，额外显示
-        if (statusData.modelStatus.supportedLanguages && statusData.modelStatus.supportedLanguages.length > 0) {
-          const supportedLangs = statusData.modelStatus.supportedLanguages
-          if (supportedLangs[0] === 'multilingual') {
-            statusText += ` (多语言支持)`
-          } else {
-            statusText += ` (支持: ${supportedLangs.join(', ')})`
-          }
+        // 添加当前模型名称
+        let currentModelName = ""
+
+        // 优先使用specificModel字段
+        if (statusData.modelStatus.specificModel) {
+          // 从路径中提取文件名
+          const pathParts = statusData.modelStatus.specificModel.split('/')
+          currentModelName = pathParts[pathParts.length - 1]
+        }
+        // 如果没有specificModel，则使用availableModels的第一个
+        else if (statusData.modelStatus.availableModels && statusData.modelStatus.availableModels.length > 0) {
+          currentModelName = statusData.modelStatus.availableModels[0].name || statusData.modelStatus.availableModels[0]
+        }
+
+        if (currentModelName) {
+          statusText += ` (${currentModelName})`
         }
 
         modelStatusText.value = statusText
