@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -91,53 +92,82 @@ func (s *AppStatusService) getModelStatus() map[string]interface{} {
 	specificModel := s.getSpecificModel()
 	availableModels := s.getAvailableModels(modelPath)
 
+	// 获取当前已加载的语言模型
+	currentLoadedLanguages := s.getLoadedModels()
+
 	// 从可用模型提取支持的语言
 	supportedLanguages := s.getSupportedLanguagesFromModels(availableModels)
 
-	// 获取当前已加载的语言模型（现在是supportedLanguages）
-	currentLoadedLanguages := s.getLoadedModels()
-
-	// 确定状态 - 主要基于可用模型而不是实际已加载的模型
+	// 重新确定状态 - 优先检查当前配置的模型路径和可用模型
 	status := "未配置"
 	statusText := "未配置模型路径"
+	isLoaded := false
 
-	if len(availableModels) > 0 {
-		if len(supportedLanguages) > 0 {
-			if supportedLanguages[0] == "multilingual" {
-				status = "可配置"
-				statusText = fmt.Sprintf("检测到多语言模型: %s", availableModels[0]["name"])
+	if modelPath == "" {
+		status = "未配置"
+		statusText = "未配置模型路径"
+	} else if len(availableModels) == 0 {
+		// 模型路径存在但没有可用模型文件
+		status = "未配置"
+		statusText = fmt.Sprintf("模型目录为空或无有效模型 (%s)", modelPath)
+	} else {
+		// 有可用模型，检查是否有指定模型
+		if specificModel != "" {
+			// 检查指定模型是否在可用模型列表中
+			foundSpecificModel := false
+			specificModelName := filepath.Base(specificModel)
+			for _, model := range availableModels {
+				if modelName, ok := model["name"].(string); ok && modelName == specificModelName {
+					foundSpecificModel = true
+					break
+				}
+			}
+
+			if foundSpecificModel {
+				// 指定模型存在且可用，检查是否已加载
+				if len(currentLoadedLanguages) > 0 {
+					status = "已加载"
+					statusText = fmt.Sprintf("模型已加载: %s", specificModelName)
+					isLoaded = true
+				} else {
+					status = "可配置"
+					statusText = fmt.Sprintf("已选择模型: %s，需要加载", specificModelName)
+				}
 			} else {
-				status = "可配置"
-				statusText = fmt.Sprintf("检测到支持 %d 种语言的模型: %v", len(supportedLanguages), supportedLanguages)
+				// 指定模型不存在
+				status = "未配置"
+				statusText = fmt.Sprintf("指定的模型文件不存在: %s", specificModelName)
 			}
 		} else {
-			status = "可配置"
-			statusText = fmt.Sprintf("检测到 %d 个模型文件", len(availableModels))
-		}
-	} else if specificModel != "" {
-		status = "可配置"
-		statusText = fmt.Sprintf("已指定模型: %s，需要加载", specificModel)
-	} else if modelPath != "" {
-		status = "路径已配置"
-		statusText = "模型路径已配置，但未检测到可用模型"
-	}
-
-	// 如果有加载的语言模型，更新状态并使用supportedLanguages
-	if len(currentLoadedLanguages) > 0 {
-		status = "已加载"
-		supportedLanguages = currentLoadedLanguages // 使用实际加载的语言作为支持的语言
-		if len(supportedLanguages) > 1 || supportedLanguages[0] == "multilingual" {
-			statusText = fmt.Sprintf("多语言模型已加载 (支持 %d 种语言)", len(supportedLanguages))
-		} else {
-			statusText = fmt.Sprintf("已加载 %d 个语言模型: %v", len(supportedLanguages), supportedLanguages)
+			// 没有指定具体模型，但有可用模型
+			if len(currentLoadedLanguages) > 0 {
+				status = "已加载"
+				if len(supportedLanguages) > 1 || supportedLanguages[0] == "multilingual" {
+					statusText = fmt.Sprintf("多语言模型已加载 (支持 %d 种语言)", len(supportedLanguages))
+				} else {
+					statusText = fmt.Sprintf("已加载 %d 个语言模型: %v", len(supportedLanguages), supportedLanguages)
+				}
+				isLoaded = true
+			} else {
+				status = "可配置"
+				if len(supportedLanguages) > 0 {
+					if supportedLanguages[0] == "multilingual" {
+						statusText = fmt.Sprintf("检测到多语言模型: %s", availableModels[0]["name"])
+					} else {
+						statusText = fmt.Sprintf("检测到支持 %d 种语言的模型: %v", len(supportedLanguages), supportedLanguages)
+					}
+				} else {
+					statusText = fmt.Sprintf("检测到 %d 个模型文件", len(availableModels))
+				}
+			}
 		}
 	}
 
 	return map[string]interface{}{
 		"status":     status,
 		"statusText": statusText,
-		"isLoaded":   len(supportedLanguages) > 0,
-		"supportedLanguages": supportedLanguages, // 重命名为supportedLanguages
+		"isLoaded":   isLoaded, // 使用新计算的 isLoaded 状态
+		"supportedLanguages": supportedLanguages,
 		"modelPath":  modelPath,
 		"specificModel": specificModel,
 		"availableModels": availableModels,

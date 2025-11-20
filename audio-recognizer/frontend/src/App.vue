@@ -97,7 +97,7 @@
     <!-- 设置模态框 -->
     <SettingsModal
       :visible="showSettings"
-      @close="showSettings = false"
+      @close="handleSettingsClose"
       @save="handleSettingsSave"
     />
 
@@ -446,6 +446,15 @@ const checkAndShowModelNotification = (modelStatus) => {
   }
 }
 
+
+// 设置关闭处理
+const handleSettingsClose = async () => {
+  showSettings.value = false
+
+  // 设置关闭后立即更新状态，确保显示最新的模型状态
+  console.log('🔄 设置模态框已关闭，刷新应用状态')
+  await updateApplicationStatus(true)
+}
 
 // 设置保存处理
 const handleSettingsSave = async () => {

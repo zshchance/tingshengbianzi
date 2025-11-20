@@ -523,9 +523,22 @@ onMounted(async () => {
 
 // 模型选择相关方法
 const isModelSelected = (model) => {
-  if (!settings.specificModelFile) return false
+  console.log('🔎 检查模型是否被选中:', model.name, settings.specificModelFile)
+  if (!settings.specificModelFile || !settings.modelPath) return false
+
+  // 获取选中模型的文件名
   const selectedFileName = settings.specificModelFile.split('/').pop().split('\\').pop()
-  return selectedFileName === model.name
+
+  // 检查文件名是否匹配
+  if (selectedFileName !== model.name) return false
+
+  // 标准化路径分隔符并检查模型路径是否匹配
+  const normalizedModelPath = settings.modelPath.replace(/\\/g, '/').replace(/\/$/, '')
+  const normalizedSelectedPath = settings.specificModelFile.replace(/\\/g, '/')
+
+  // 检查选中的模型文件是否在当前模型目录中
+  return normalizedSelectedPath.startsWith(normalizedModelPath + '/') ||
+         normalizedSelectedPath.startsWith(normalizedModelPath + '\\')
 }
 
 const getCurrentSelectedModel = () => {
