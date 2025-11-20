@@ -114,25 +114,24 @@
           <div class="about-content">
             <div class="app-icon">🎵</div>
             <h4>听声辨字</h4>
-            <p class="version">版本 1.0.0</p>
+            <p class="version">版本 {{ APP_INFO.VERSION }}</p>
             <p class="description">
-              一款基于 Whisper 引擎的智能音频识别工具，支持多种音频格式的语音转文字功能，
-              并提供精确的时间戳和AI优化选项。
+              {{ APP_INFO.DESCRIPTION }}
             </p>
 
             <div class="contact-info">
               <h5>联系方式</h5>
               <div class="contact-item">
                 <span class="icon">🌐</span>
-                <span>网站：<a href="#" @click="openWebsite('administrator.wiki')">administrator.wiki</a></span>
+                <span>网站：<a href="#" @click="openWebsite(APP_INFO.WEBSITE)">{{ APP_INFO.WEBSITE }}</a></span>
               </div>
               <div class="contact-item">
                 <span class="icon">📧</span>
-                <span>邮箱：<a href="mailto:zshchance@qq.com">zshchance@qq.com</a></span>
+                <span>邮箱：<a :href="`mailto:${APP_INFO.EMAIL}`">{{ APP_INFO.EMAIL }}</a></span>
               </div>
               <div class="contact-item">
                 <span class="icon">👤</span>
-                <span>开发者：这家伙很懒</span>
+                <span>开发者：{{ APP_INFO.AUTHOR }}</span>
               </div>
             </div>
 
@@ -148,10 +147,9 @@
             <div class="tech-stack">
               <h5>技术栈</h5>
               <ul>
-                <li>🔧 后端：Go + Wails v2</li>
-                <li>🎨 前端：Vue.js 3 + Vite</li>
-                <li>🤖 识别引擎：Whisper.cpp</li>
-                <li>🎵 音频处理：FFmpeg</li>
+                <li v-for="tech in TECH_STACK" :key="tech.name">
+                  {{ tech.icon }} {{ tech.name }}：{{ tech.tech }}
+                </li>
               </ul>
             </div>
           </div>
@@ -175,6 +173,23 @@ import { useSettings } from './composables/useSettings'
 import { generateFineGrainedTimestampedText, formatTimestamp } from './utils/timeFormatter'
 import { generateFineGrainedTimestampedText as generateEnhancedTimestamps, optimizeSpeedAnalysis, intelligentDeduplication } from './utils/fineGrainedTimestamps'
 import { generateAIOptimizationPrompt, preprocessText, generateTextQualityReport } from './utils/aiOptimizer'
+// 导入新的工具函数
+import {
+  fileToBase64,
+  formatFileSize,
+  formatTime,
+  formatDuration,
+  estimateDurationFromSize,
+  getBrowserAudioDuration,
+  isSupportedAudioFile,
+  getFileTypeDescription,
+  createFileInfo
+} from './utils/audioFileUtils'
+import {
+  DEDUPLICATION_CONFIG,
+  APP_INFO,
+  TECH_STACK
+} from './constants/recognitionConstants'
 // 日志功能已移除 - 使用浏览器控制台进行调试
 import { EventsOn } from '../wailsjs/runtime/runtime.js'
 import ToastContainer from './components/ToastContainer.vue'
@@ -495,10 +510,7 @@ const setupBrowserDragDrop = () => {
       })
 
       // 检查是否为音频文件
-      const audioTypes = ['audio/mpeg', 'audio/wav', 'audio/mp3', 'audio/mp4', 'audio/aac', 'audio/ogg', 'audio/flac', 'audio/m4a']
-      const fileName = file.name.toLowerCase()
-      const isAudio = audioTypes.some(type => file.type.includes(type.split('/')[1])) ||
-                    fileName.match(/\.(mp3|wav|m4a|aac|ogg|flac)$/i)
+      const isAudio = isSupportedAudioFile(file)
 
       if (isAudio) {
         console.log('✅ 确认为音频文件，开始处理拖拽文件')
@@ -557,15 +569,6 @@ const processDroppedFile = async (file) => {
       lastModified: file.lastModified,
       duration: 0,
       hasPath: !!file.path
-    }
-
-    // 格式化文件大小
-    const formatFileSize = (bytes) => {
-      if (bytes === 0) return '0 B'
-      const k = 1024
-      const sizes = ['B', 'KB', 'MB', 'GB']
-      const i = Math.floor(Math.log(bytes) / Math.log(k))
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
     }
 
     fileInfo.formattedSize = formatFileSize(file.size)
@@ -629,58 +632,8 @@ const processDroppedFile = async (file) => {
   }
 }
 
-// 获取音频时长（浏览器方式，参考老版本AudioFileProcessor的实现）
-const getBrowserAudioDuration = (file) => {
-  return new Promise((resolve, reject) => {
-    const audio = new Audio()
-    let timeoutId = null
-
-    const handleLoadedMetadata = () => {
-      if (audio.duration && !isNaN(audio.duration)) {
-        cleanup()
-        resolve(audio.duration)
-      } else {
-        cleanup()
-        reject(new Error('无法获取音频时长'))
-      }
-    }
-
-    const handleError = (error) => {
-      cleanup()
-      reject(new Error('音频加载失败'))
-    }
-
-    const cleanup = () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId)
-        timeoutId = null
-      }
-      audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
-      audio.removeEventListener('error', handleError)
-      URL.revokeObjectURL(audio.src)
-    }
-
-    audio.addEventListener('loadedmetadata', handleLoadedMetadata)
-    audio.addEventListener('error', handleError)
-
-    // 设置超时
-    timeoutId = setTimeout(() => {
-      cleanup()
-      reject(new Error('音频时长获取超时'))
-    }, 15000)
-
-    audio.src = URL.createObjectURL(file)
-  })
-}
 
 
-// 格式化时长
-const formatDuration = (seconds) => {
-  if (!seconds || isNaN(seconds)) return '00:00'
-  const minutes = Math.floor(seconds / 60)
-  const secs = Math.floor(seconds % 60)
-  return `${minutes}:${secs.toString().padStart(2, '0')}`
-}
 
 // 处理文件选择（包括拖拽和按钮选择）
 const handleFileSelect = async (file) => {
@@ -770,97 +723,10 @@ const handleFileError = (errorMessage) => {
   toastStore.showError('文件错误', errorMessage)
 }
 
-// 格式化文件大小
-const formatFileSize = (bytes) => {
-  if (bytes === 0) return '0 Bytes'
-
-  const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
-
-// 将文件转换为Base64编码
-const fileToBase64 = (file) => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = reader.result
-      // 移除数据URL前缀，只保留Base64数据
-      const base64Data = result.split(',')[1]
-      resolve(base64Data)
-    }
-    reader.onerror = (error) => {
-      reject(error)
-    }
-    reader.readAsDataURL(file)
-  })
-}
 
 
-// 格式化时间
-const formatTime = (seconds) => {
-  console.log('formatTime 输入的秒数:', seconds, typeof seconds)
 
-  if (!seconds || isNaN(seconds)) {
-    console.log('formatTime: 秒数为空或无效，返回00:00')
-    return '00:00'
-  }
 
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  const secs = Math.floor(seconds % 60)
-
-  console.log('formatTime 计算后 - 小时:', hours, '分钟:', minutes, '秒:', secs)
-
-  if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-  } else {
-    return `${minutes}:${secs.toString().padStart(2, '0')}`
-  }
-}
-
-// 从文件大小估算音频时长
-const estimateDurationFromSize = (fileSize, fileName) => {
-  // 获取文件扩展名
-  const extension = fileName.split('.').pop()?.toLowerCase() || ''
-
-  // 根据文件格式设置不同的比特率估算
-  let bitrate = 128000 // 默认128kbps
-
-  switch (extension) {
-    case 'mp3':
-      bitrate = 128000 // MP3通常128kbps
-      break
-    case 'wav':
-      bitrate = 1411000 // WAV通常无损，约1.4Mbps
-      break
-    case 'm4a':
-    case 'aac':
-      bitrate = 128000 // AAC通常128kbps
-      break
-    case 'ogg':
-      bitrate = 160000 // OGG Vorbis通常160kbps
-      break
-    case 'flac':
-      bitrate = 1000000 // FLAC无损约1Mbps
-      break
-    default:
-      bitrate = 128000 // 默认估算
-  }
-
-  // 计算时长（秒）
-  const estimatedDuration = (fileSize * 8) / bitrate
-
-  console.log(`时长估算: 文件大小=${fileSize}字节, 比特率=${bitrate}bps, 估算时长=${estimatedDuration}秒`)
-
-  // 设置合理的范围：最小1秒，最大10小时
-  const minDuration = 1
-  const maxDuration = 36000 // 10小时
-
-  return Math.max(minDuration, Math.min(maxDuration, Math.round(estimatedDuration)))
-}
 
 // 处理文件选择对话框
 const handleOpenFileDialog = async () => {
@@ -1008,13 +874,7 @@ const setupGlobalWailsEvents = () => {
         const originalSegmentsCount = response.result.segments.length
 
         // 应用智能去重算法
-        const deduplicatedSegments = intelligentDeduplication(response.result.segments, {
-          similarityThreshold: 0.85,    // 85% 相似度阈值
-          timeOverlapThreshold: 0.3,   // 30% 时间重叠阈值
-          minLength: 3,                // 最小有效长度
-          enableTimeAnalysis: true,    // 启用时间重叠分析
-          enableSemanticAnalysis: false // 暂不启用语义分析
-        })
+        const deduplicatedSegments = intelligentDeduplication(response.result.segments, DEDUPLICATION_CONFIG)
 
         // 替换原始segments为去重后的结果
         response.result.segments = deduplicatedSegments

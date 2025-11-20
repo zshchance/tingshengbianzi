@@ -77,6 +77,33 @@ curl -L https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-
 curl -L https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q8_0.bin -o models/whisper/ggml-large-v3-turbo-q8_0.bin
 ```
 
+### Icon and Asset Management
+```bash
+# Fix icon display issues
+./scripts/fix-all-icons.sh
+
+# Generate high-quality icons
+./scripts/generate-icons.sh
+
+# Optimize icons for production
+./scripts/optimize-icons.sh
+
+# Fix icon cache issues
+./scripts/clear-icon-cache.sh
+```
+
+### Testing and Debugging
+```bash
+# Show application logs
+./scripts/show-logs.sh
+
+# Run development server with restart
+./scripts/restart-dev.sh
+
+# Test third-party dependencies
+./scripts/test-dependencies.sh
+```
+
 ## Project Structure
 
 ```
@@ -87,9 +114,27 @@ audio-recognizer/
 │       ├── ffmpeg               # FFmpeg multimedia framework
 │       └── ffprobe              # FFprobe media analysis tool
 ├── frontend/                      # Vue.js frontend application
+│   ├── src/
+│   │   ├── components/           # Vue components
+│   │   ├── composables/          # Composition API functions
+│   │   ├── stores/              # Pinia state stores
+│   │   └── modules/             # Frontend modules
+│   ├── package.json             # Frontend dependencies
+│   └── vite.config.js           # Vite configuration
 ├── backend/                       # Go backend application
+│   ├── recognition/             # Speech recognition services
+│   ├── audio/                   # Audio processing services
+│   ├── models/                  # Data structures and types
+│   ├── utils/                   # Utility functions
+│   ├── services/                # Business logic services
+│   ├── config/                  # Configuration management
+│   └── path/                    # Path and dependency management
 ├── scripts/                       # Build and utility scripts
-└── wails.json                     # Wails configuration
+├── config/                        # Configuration files
+├── models/                        # Whisper speech models
+├── docs/                          # Documentation
+├── wails.json                     # Wails configuration
+└── app.go                         # Main application entry point
 ```
 
 ## Architecture Overview
@@ -134,13 +179,26 @@ The backend follows a modular Go structure with Whisper integration:
   - **audio/** - Audio processing using FFmpeg
     - `processor.go` - Audio format conversion and processing with embedded FFmpeg support
   - **models/** - Data structures and configurations
-    - `recognition.go` - Recognition result and config models
+    - `recognition.go` - Recognition result and config models with detailed Word and Segment structures
     - `errors.go` - Error handling definitions with structured error types
   - **utils/** - Utility functions
     - `ffmpeg_manager.go` - FFmpeg binary management with embedded fallback
     - `embedded_ffmpeg.go` - Embedded FFmpeg handling for self-contained deployment
     - `time_utils.go` - Time formatting utilities for timestamps
     - `text_utils.go` - Text processing utilities for AI optimization
+    - `logger.go` - Structured logging system
+    - `file_utils.go` - File handling utilities
+  - **services/** - Business logic services
+    - `model_service.go` - Model management and validation
+    - `audio_service.go` - Audio file handling and processing
+    - `export_service.go` - Result export functionality
+  - **config/** - Configuration management
+    - `config_manager.go` - Configuration loading, saving, and validation
+  - **path/** - Path and dependency management
+    - `path_manager.go` - Unified path management for dependencies and templates
+    - `app_locator.go` - Application location detection
+    - `dependency_manager.go` - Third-party dependency extraction and management
+    - `template_manager.go` - AI template system initialization
 
 ### Configuration System
 Advanced configuration system with real-time synchronization:
@@ -191,11 +249,13 @@ Whisper models are stored in configurable paths (default `./models/whisper/`):
 - **Application context** managed through `App` struct with `ctx context.Context`
 - **Event-driven communication** between frontend and backend via `runtime.EventsEmit()`
 - **Progress updates** with percentage and status tracking
-- **File operations** using Wails runtime services
+- **File operations** using Wails runtime services including drag-and-drop support
 - **Embedded frontend assets** in production builds
 - **Cross-platform deployment** with proper asset embedding
 - **Configuration management** with real-time frontend-backend synchronization
 - **AI template system** for intelligent text optimization and processing
+- **Third-party dependency management** with automatic extraction from embedded resources
+- **Model validation** and path management for Whisper models
 
 ## Important Implementation Details
 
@@ -244,6 +304,8 @@ Whisper models are stored in configurable paths (default `./models/whisper/`):
 - **Cross-platform file path handling** with proper separators
 - **Dynamic path resolution** for model directory and configuration files
 - **Platform-specific builds** with proper asset embedding and signing
+- **Icon generation** and optimization for different platforms
+- **Dependency packaging** for truly self-contained distribution
 
 ## Development Workflow
 
@@ -261,20 +323,24 @@ Whisper models are stored in configurable paths (default `./models/whisper/`):
 3. **Manual Testing** - Test with various audio formats and languages
 4. **Model Testing** - Verify Whisper model loading and recognition accuracy
 5. **Configuration Testing** - Test settings persistence and backend sync
+6. **Dependency Testing** - Verify third-party binaries are properly extracted and functional
 
 ### Frontend Development (Vue.js 3)
 - **Component development** in `.vue` files with Composition API
-- **Composable usage** for shared logic and state management
+- **Composable usage** for shared logic and state management (useAudioFile, useWails, useSettings, useToast)
 - **Pinia integration** for global state management
 - **Vite for development** with fast builds and hot reload
 - **Singleton patterns** for global settings and state sharing
+- **Drag-and-drop support** with Base64 file handling
 
 ### Backend Development (Go)
 - **Service-oriented architecture** with clear interfaces and implementations
 - **Concurrent processing** with goroutines for audio processing
-- **Structured logging** and comprehensive error handling
+- **Structured logging** and comprehensive error handling with custom error types
 - **Configuration management** with validation and real-time updates
 - **Embedded resource handling** for self-contained deployment
+- **Path management system** for cross-platform dependency resolution
+- **Template system** for AI text optimization with multiple prompt templates
 
 ## Build and Deployment
 
@@ -321,3 +387,30 @@ Whisper models are stored in configurable paths (default `./models/whisper/`):
 - **FFmpeg embedding** - Use `./scripts/bundle-ffmpeg.sh` to embed FFmpeg for standalone deployment
 - **Packaged app not working** - Use `./scripts/build-complete.sh` for distribution builds with all dependencies
 - **Whisper CLI missing** - The complete build script includes `backend/recognition/whisper-cli` binary packaging
+- **Third-party dependencies** - Use `./scripts/build-with-third-party.sh` to package all required binaries
+- **Template system issues** - Check `Resources/templates/` directory for AI prompt templates
+- **Configuration persistence** - Verify `config/user-config.json` is writable and properly formatted
+
+## Additional Development Information
+
+### File Handling and Drag-Drop
+The application supports both file path selection and drag-drop functionality:
+- **File Path Mode**: Standard file selection with path validation
+- **Drag-Drop Mode**: Base64 encoding of file data with temporary file creation
+- **Audio Validation**: Format checking (MP3, WAV, M4A, AAC, OGG, FLAC) and size limits (100MB default)
+- **Duration Detection**: Automatic audio duration calculation using FFmpeg
+
+### Configuration System Details
+- **Default Config**: Loaded from `config/default.json`
+- **User Config**: Saved to `config/user-config.json` with real-time updates
+- **Backend Sync**: Configuration changes immediately propagated to Go backend services
+- **Validation**: Automatic path correction and model directory validation
+- **Fallback**: Graceful degradation when configuration files are missing or corrupted
+
+### Third-Party Dependency Resolution
+The application uses a sophisticated dependency resolution system:
+1. **Embedded Resources**: Highest priority, extracted from application binary
+2. **Development Directory**: `third-party/bin/` during development
+3. **System PATH**: Fallback to system-installed binaries
+4. **Automatic Extraction**: Dependencies extracted to local filesystem on first run
+5. **Permission Handling**: Automatic executable permission setting for extracted binaries
