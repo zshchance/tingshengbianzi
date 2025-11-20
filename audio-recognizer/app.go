@@ -103,47 +103,66 @@ func (a *App) startup(ctx context.Context) {
 
 // extractThirdPartyDependencies 提取嵌入的第三方依赖到本地文件系统
 func (a *App) extractThirdPartyDependencies() error {
-	// 获取应用的可执行文件目录
-	exePath, err := os.Executable()
+	targetDir, err := a.getThirdPartyTargetDirectory()
 	if err != nil {
-		return fmt.Errorf("获取可执行文件路径失败: %v", err)
-	}
-
-	exeDir := filepath.Dir(exePath)
-	var targetDir string
-
-	// 判断运行环境，确定目标目录
-	if strings.Contains(exeDir, ".app/Contents/MacOS") {
-		// 在.app包中：提取到 Resources/third-party/bin
-		targetDir = filepath.Join(filepath.Dir(exeDir), "Resources", "third-party", "bin")
-	} else {
-		// 开发环境：提取到项目根目录的 third-party/bin
-		appRoot := getAppRootDirectory()
-		targetDir = filepath.Join(appRoot, "third-party", "bin")
+		return fmt.Errorf("获取目标目录失败: %v", err)
 	}
 
 	fmt.Printf("🎯 第三方依赖目标目录: %s\n", targetDir)
 
-	// 确保目标目录存在
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
+	if err := a.ensureTargetDirectory(targetDir); err != nil {
 		return fmt.Errorf("创建目标目录失败: %v", err)
 	}
 
-	// 需要提取的文件列表
-	requiredFiles := []string{
+	requiredFiles := a.getRequiredThirdPartyFiles()
+	if err := a.extractThirdPartyFiles(requiredFiles, targetDir); err != nil {
+		return fmt.Errorf("提取第三方文件失败: %v", err)
+	}
+
+	fmt.Printf("✅ 第三方依赖提取完成，共提取 %d 个文件\n", len(requiredFiles))
+	return nil
+}
+
+// getThirdPartyTargetDirectory 获取第三方依赖目标目录
+func (a *App) getThirdPartyTargetDirectory() (string, error) {
+	exePath, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("获取可执行文件路径失败: %v", err)
+	}
+
+	exeDir := filepath.Dir(exePath)
+
+	if strings.Contains(exeDir, ".app/Contents/MacOS") {
+		// 在.app包中：提取到 Resources/third-party/bin
+		return filepath.Join(filepath.Dir(exeDir), "Resources", "third-party", "bin"), nil
+	}
+
+	// 开发环境：提取到项目根目录的 third-party/bin
+	appRoot := getAppRootDirectory()
+	return filepath.Join(appRoot, "third-party", "bin"), nil
+}
+
+// ensureTargetDirectory 确保目标目录存在
+func (a *App) ensureTargetDirectory(targetDir string) error {
+	return os.MkdirAll(targetDir, 0755)
+}
+
+// getRequiredThirdPartyFiles 获取需要提取的第三方文件列表
+func (a *App) getRequiredThirdPartyFiles() []string {
+	return []string{
 		"third-party/bin/whisper-cli",
 		"third-party/bin/ffmpeg",
 		"third-party/bin/ffprobe",
 	}
+}
 
-	// 提取每个文件
-	for _, filePath := range requiredFiles {
+// extractThirdPartyFiles 批量提取第三方文件
+func (a *App) extractThirdPartyFiles(files []string, targetDir string) error {
+	for _, filePath := range files {
 		if err := a.extractThirdPartyFile(filePath, targetDir); err != nil {
 			return fmt.Errorf("提取文件 %s 失败: %v", filePath, err)
 		}
 	}
-
-	fmt.Printf("✅ 第三方依赖提取完成，共提取 %d 个文件\n", len(requiredFiles))
 	return nil
 }
 
@@ -185,41 +204,64 @@ func (a *App) extractThirdPartyFile(embedPath, targetDir string) error {
 
 // initializeTemplates 初始化AI提示词模板系统
 func (a *App) initializeTemplates() error {
-	// 获取用户配置目录和相对路径
-	userConfigDir, configSubDir := config.GetUserConfigDirectory()
+	templatePath := a.resolveTemplatePath()
 
-	// 设置模板配置文件路径
-	var templatePath string
-	if configSubDir == "" {
-		// 用户主目录中的模板
-		templatePath = filepath.Join(userConfigDir, "templates.json")
-
-		// 如果用户目录中没有模板文件，复制内置模板
-		if _, err := os.Stat(templatePath); os.IsNotExist(err) {
-			// 尝试从应用资源目录复制模板文件
-			appRoot := getAppRootDirectory()
-			builtinTemplatePath := filepath.Join(appRoot, "config", "templates.json")
-			if builtinData, err := os.ReadFile(builtinTemplatePath); err == nil {
-				// 复制到用户目录
-				if err := os.WriteFile(templatePath, builtinData, 0644); err == nil {
-					fmt.Printf("✅ 已复制内置模板到用户目录: %s\n", templatePath)
-				}
-			}
-		}
-	} else {
-		// 项目目录中的模板
-		templatePath = filepath.Join(userConfigDir, configSubDir, "templates.json")
+	if err := a.ensureTemplateFileExists(templatePath); err != nil {
+		return fmt.Errorf("确保模板文件存在失败: %v", err)
 	}
 
-	// 初始化模板系统
-	if err := utils.InitializeTemplates(templatePath); err != nil {
+	if err := a.loadTemplateSystem(templatePath); err != nil {
 		fmt.Printf("加载AI模板配置失败: %v，将使用硬编码模板\n", err)
-		// 不返回错误，允许应用继续运行
-		return nil
+		return nil // 允许应用继续运行
 	}
 
 	fmt.Printf("✅ AI模板系统初始化成功\n")
 	return nil
+}
+
+// resolveTemplatePath 解析模板文件路径
+func (a *App) resolveTemplatePath() string {
+	userConfigDir, configSubDir := config.GetUserConfigDirectory()
+
+	if configSubDir == "" {
+		// 用户主目录中的模板
+		return filepath.Join(userConfigDir, "templates.json")
+	}
+
+	// 项目目录中的模板
+	return filepath.Join(userConfigDir, configSubDir, "templates.json")
+}
+
+// ensureTemplateFileExists 确保模板文件存在
+func (a *App) ensureTemplateFileExists(templatePath string) error {
+	// 如果文件已存在，直接返回
+	if _, err := os.Stat(templatePath); err == nil {
+		return nil
+	}
+
+	// 尝试复制内置模板
+	builtinTemplatePath := filepath.Join(getAppRootDirectory(), "config", "templates.json")
+	return a.copyBuiltinTemplate(builtinTemplatePath, templatePath)
+}
+
+// copyBuiltinTemplate 复制内置模板
+func (a *App) copyBuiltinTemplate(builtinPath, targetPath string) error {
+	builtinData, err := os.ReadFile(builtinPath)
+	if err != nil {
+		return fmt.Errorf("读取内置模板失败: %v", err)
+	}
+
+	if err := os.WriteFile(targetPath, builtinData, 0644); err != nil {
+		return fmt.Errorf("复制模板文件失败: %v", err)
+	}
+
+	fmt.Printf("✅ 已复制内置模板到用户目录: %s\n", targetPath)
+	return nil
+}
+
+// loadTemplateSystem 加载模板系统
+func (a *App) loadTemplateSystem(templatePath string) error {
+	return utils.InitializeTemplates(templatePath)
 }
 
 // initializeVoskService 初始化语音识别服务
@@ -238,7 +280,6 @@ func (a *App) initializeVoskService() error {
 
 // getAppRootDirectory 获取应用根目录
 func getAppRootDirectory() string {
-	// 首先尝试获取可执行文件所在目录
 	exePath, err := os.Executable()
 	if err != nil {
 		exePath = "."
@@ -247,56 +288,77 @@ func getAppRootDirectory() string {
 
 	// 检查是否在 Wails 开发环境的 .app 包中
 	if strings.Contains(exeDir, ".app/Contents/MacOS") {
-		// 在 .app 包中，需要向上找到项目根目录
-		searchDir := exeDir
-		for i := 0; i < 10; i++ { // 最多向上查找10级
-			// 检查是否有项目标志文件
-			projectFiles := []string{"wails.json", "go.mod", "main.go"}
-			for _, marker := range projectFiles {
-				if _, err := os.Stat(filepath.Join(searchDir, marker)); err == nil {
-					fmt.Printf("🎯 检测到项目根目录: %s\n", searchDir)
-					return searchDir
-				}
-			}
-
-			// 如果到了 build 目录，再向上找一级
-			if filepath.Base(searchDir) == "build" {
-				searchDir = filepath.Dir(searchDir)
-				continue
-			}
-
-			searchDir = filepath.Dir(searchDir)
-		}
+		return findProjectRootFromAppBundle(exeDir)
 	}
 
 	// 检查是否在临时构建目录中
-	if filepath.Base(exeDir) == "build" || filepath.Base(exeDir) == "tmp" {
-		// 尝试查找项目根目录的标志文件
-		projectFiles := []string{"wails.json", "go.mod", "main.go"}
-
-		// 从当前目录向上查找
-		searchDir := exeDir
-		for i := 0; i < 5; i++ { // 最多向上查找5级
-			for _, marker := range projectFiles {
-				if _, err := os.Stat(filepath.Join(searchDir, marker)); err == nil {
-					fmt.Printf("🎯 检测到项目根目录: %s\n", searchDir)
-					return searchDir
-				}
-			}
-			searchDir = filepath.Dir(searchDir)
-		}
+	if isBuildDirectory(exeDir) {
+		return findProjectRootFromBuildDir(exeDir)
 	}
 
-	// 如果都没找到，检查当前目录是否已经是项目根目录
-	projectFiles := []string{"wails.json", "go.mod", "main.go"}
-	for _, marker := range projectFiles {
-		if _, err := os.Stat(filepath.Join(exeDir, marker)); err == nil {
-			fmt.Printf("🎯 当前目录就是项目根目录: %s\n", exeDir)
-			return exeDir
-		}
+	// 检查当前目录是否已经是项目根目录
+	if isProjectRootDirectory(exeDir) {
+		fmt.Printf("🎯 当前目录就是项目根目录: %s\n", exeDir)
+		return exeDir
 	}
 
 	fmt.Printf("📁 使用可执行文件目录: %s\n", exeDir)
+	return exeDir
+}
+
+// isBuildDirectory 检查是否为构建目录
+func isBuildDirectory(dir string) bool {
+	base := filepath.Base(dir)
+	return base == "build" || base == "tmp"
+}
+
+// isProjectRootDirectory 检查是否为项目根目录
+func isProjectRootDirectory(dir string) bool {
+	projectFiles := []string{"wails.json", "go.mod", "main.go"}
+	for _, marker := range projectFiles {
+		if _, err := os.Stat(filepath.Join(dir, marker)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// findProjectRootFromAppBundle 从.app包中查找项目根目录
+func findProjectRootFromAppBundle(exeDir string) string {
+	searchDir := exeDir
+	maxDepth := 10
+
+	for i := 0; i < maxDepth; i++ {
+		if isProjectRootDirectory(searchDir) {
+			fmt.Printf("🎯 检测到项目根目录: %s\n", searchDir)
+			return searchDir
+		}
+
+		// 如果到了 build 目录，再向上找一级
+		if filepath.Base(searchDir) == "build" {
+			searchDir = filepath.Dir(searchDir)
+			continue
+		}
+
+		searchDir = filepath.Dir(searchDir)
+	}
+
+	return exeDir
+}
+
+// findProjectRootFromBuildDir 从构建目录查找项目根目录
+func findProjectRootFromBuildDir(exeDir string) string {
+	searchDir := exeDir
+	maxDepth := 5
+
+	for i := 0; i < maxDepth; i++ {
+		if isProjectRootDirectory(searchDir) {
+			fmt.Printf("🎯 检测到项目根目录: %s\n", searchDir)
+			return searchDir
+		}
+		searchDir = filepath.Dir(searchDir)
+	}
+
 	return exeDir
 }
 
@@ -413,103 +475,109 @@ func (a *App) performRecognition(request RecognitionRequest, language string) {
 		a.mu.Unlock()
 	}()
 
-	// 发送进度事件
 	a.sendProgressEvent("recognition_progress", &models.RecognitionProgress{
 		Status:     "正在准备音频文件...",
 		Percentage: 0,
 	})
 
-	// 执行识别
-	var result *models.RecognitionResult
-	var err error
-
-	// 处理拖拽文件（Base64数据）
-	if request.FileData != "" {
-		a.sendProgressEvent("recognition_progress", &models.RecognitionProgress{
-			Status:     "正在处理拖拽文件...",
-			Percentage: 5,
-		})
-
-		// 创建临时文件处理Base64数据
-		tempFile, tempErr := a.createTempFileFromBase64(request.FileData)
-		if tempErr != nil {
-			a.sendProgressEvent("recognition_error", models.NewRecognitionError(
-				models.ErrorCodeFileValidationFailed,
-				"拖拽文件处理失败",
-				tempErr.Error(),
-			))
-			a.sendProgressEvent("recognition_complete", RecognitionResponse{
-				Success: false,
-				Error:   models.NewRecognitionError(models.ErrorCodeFileValidationFailed, "拖拽文件处理失败", tempErr.Error()),
-			})
-			return
-		}
-		defer os.Remove(tempFile) // 清理临时文件
-
-		a.sendProgressEvent("recognition_progress", &models.RecognitionProgress{
-			Status:     "临时文件创建完成，开始识别...",
-			Percentage: 10,
-		})
-
-		// 使用临时文件路径进行识别
-		if request.SpecificModelFile != "" {
-			result, err = a.recognitionService.RecognizeFileWithModel(
-				tempFile,
-				language,
-				request.SpecificModelFile,
-				func(progress *models.RecognitionProgress) {
-					a.sendProgressEvent("recognition_progress", progress)
-				},
-			)
-		} else {
-			result, err = a.recognitionService.RecognizeFile(
-				tempFile,
-				language,
-				func(progress *models.RecognitionProgress) {
-					a.sendProgressEvent("recognition_progress", progress)
-				},
-			)
-		}
-	} else {
-		// 处理普通文件路径
-		if request.SpecificModelFile != "" {
-			// 使用用户指定的模型文件
-			result, err = a.recognitionService.RecognizeFileWithModel(
-				request.FilePath,
-				language,
-				request.SpecificModelFile,
-				func(progress *models.RecognitionProgress) {
-					a.sendProgressEvent("recognition_progress", progress)
-				},
-			)
-		} else {
-			// 使用默认识别方法
-			result, err = a.recognitionService.RecognizeFile(
-				request.FilePath,
-				language,
-				func(progress *models.RecognitionProgress) {
-					a.sendProgressEvent("recognition_progress", progress)
-				},
-			)
-		}
-	}
+	result, err := a.executeRecognition(request, language)
 
 	if err != nil {
-		a.sendProgressEvent("recognition_error", models.NewRecognitionError(models.ErrorCodeRecognitionFailed, "语音识别失败", err.Error()))
-		a.sendProgressEvent("recognition_complete", RecognitionResponse{
-			Success: false,
-			Error:   models.NewRecognitionError(models.ErrorCodeRecognitionFailed, "语音识别失败", err.Error()),
-		})
+		a.handleRecognitionError(err)
 		return
 	}
 
-	// 发送完成事件
+	a.handleRecognitionSuccess(result)
+}
+
+// executeRecognition 执行识别的核心逻辑
+func (a *App) executeRecognition(request RecognitionRequest, language string) (*models.RecognitionResult, error) {
+	var filePath string
+	var cleanup func()
+
+	// 处理拖拽文件（Base64数据）
+	if request.FileData != "" {
+		tempFile, err := a.handleDragDropFile(request.FileData)
+		if err != nil {
+			return nil, err
+		}
+		filePath = tempFile
+		cleanup = func() { os.Remove(tempFile) }
+	} else {
+		filePath = request.FilePath
+	}
+
+	if cleanup != nil {
+		defer cleanup()
+	}
+
+	// 执行识别
+	if request.SpecificModelFile != "" {
+		return a.recognitionService.RecognizeFileWithModel(
+			filePath,
+			language,
+			request.SpecificModelFile,
+			a.sendProgressEventWithCallback(),
+		)
+	}
+
+	return a.recognitionService.RecognizeFile(
+		filePath,
+		language,
+		a.sendProgressEventWithCallback(),
+	)
+}
+
+// handleDragDropFile 处理拖拽文件
+func (a *App) handleDragDropFile(base64Data string) (string, error) {
+	a.sendProgressEvent("recognition_progress", &models.RecognitionProgress{
+		Status:     "正在处理拖拽文件...",
+		Percentage: 5,
+	})
+
+	tempFile, err := a.createTempFileFromBase64(base64Data)
+	if err != nil {
+		return "", fmt.Errorf("拖拽文件处理失败: %v", err)
+	}
+
+	a.sendProgressEvent("recognition_progress", &models.RecognitionProgress{
+		Status:     "临时文件创建完成，开始识别...",
+		Percentage: 10,
+	})
+
+	return tempFile, nil
+}
+
+// handleRecognitionError 处理识别错误
+func (a *App) handleRecognitionError(err error) {
+	errorMsg := models.NewRecognitionError(models.ErrorCodeRecognitionFailed, "语音识别失败", err.Error())
+	a.sendProgressEvent("recognition_error", errorMsg)
+	a.sendProgressEvent("recognition_complete", RecognitionResponse{
+		Success: false,
+		Error:   errorMsg,
+	})
+}
+
+// handleRecognitionSuccess 处理识别成功
+func (a *App) handleRecognitionSuccess(result *models.RecognitionResult) {
+	// 发送结果事件
 	a.sendProgressEvent("recognition_result", result)
 
 	// 调试：检查即将发送到前端的识别结果
+	a.debugRecognitionResult(result)
+
+	a.sendProgressEvent("recognition_complete", RecognitionResponse{
+		Success: true,
+		Result:  result,
+	})
+}
+
+// debugRecognitionResult 调试识别结果
+func (a *App) debugRecognitionResult(result *models.RecognitionResult) {
 	fmt.Printf("🔍 即将发送到前端的识别结果:\n")
 	fmt.Printf("   result.Text长度: %d\n", len(result.Text))
 	fmt.Printf("   result.Segments数量: %d\n", len(result.Segments))
+
 	if len(result.Text) > 0 {
 		previewLen := 100
 		if len(result.Text) < previewLen {
@@ -517,11 +585,13 @@ func (a *App) performRecognition(request RecognitionRequest, language string) {
 		}
 		fmt.Printf("   result.Text预览: %s\n", result.Text[:previewLen])
 	}
+}
 
-	a.sendProgressEvent("recognition_complete", RecognitionResponse{
-		Success: true,
-		Result:  result,
-	})
+// sendProgressEventWithCallback 返回进度回调函数
+func (a *App) sendProgressEventWithCallback() func(*models.RecognitionProgress) {
+	return func(progress *models.RecognitionProgress) {
+		a.sendProgressEvent("recognition_progress", progress)
+	}
 }
 
 // StopRecognition 停止语音识别
