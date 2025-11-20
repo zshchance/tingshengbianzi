@@ -216,6 +216,21 @@ export function useWails() {
   }
 
   /**
+   * 获取应用状态（包括模型状态和版本信息）
+   */
+  const getApplicationStatus = async () => {
+    try {
+      console.log('🔍 获取应用状态...')
+      const status = await App.GetApplicationStatus()
+      console.log('✅ 应用状态获取成功:', status)
+      return status
+    } catch (error) {
+      console.error('❌ 获取应用状态失败:', error)
+      throw error
+    }
+  }
+
+  /**
    * 获取应用配置
    */
   const getConfig = async () => {
@@ -597,6 +612,7 @@ export function useWails() {
     stopRecognition,
     loadModel,
     getRecognitionStatus,
+    getApplicationStatus,
     getConfig,
     updateConfig,
     exportResult,

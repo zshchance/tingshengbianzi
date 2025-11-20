@@ -85,11 +85,11 @@
       <!-- 底部状态栏 -->
       <footer class="app-footer">
         <div class="status-left">
-          <span id="appStatus">{{ isProcessing ? '识别中' : '就绪' }}</span>
+          <span id="appStatus">{{ appStatus || '加载中...' }}</span>
         </div>
         <div class="status-right">
-          <span id="modelStatus">模型: 已加载</span>
-          <span id="versionInfo">v2.0.0</span>
+          <span id="modelStatus">{{ modelStatusText || '检查中...' }}</span>
+          <span id="versionInfo">{{ versionInfo || 'v?.?.?' }}</span>
         </div>
       </footer>
     </div>
@@ -161,6 +161,7 @@ const {
   stopRecognition: wailsStopRecognition,
   selectAudioFile: wailsSelectAudioFile,
   getRecognitionStatus,
+  getApplicationStatus,
   getAudioDuration,
   formatAIText,
   generateAIPrompt,
@@ -175,6 +176,11 @@ const showSettings = ref(false)
 const showAboutModal = ref(false)
 const recognitionResult = ref(null)
 const showResults = ref(false)
+
+// 动态状态信息
+const appStatus = ref('加载中...')
+const modelStatusText = ref('检查中...')
+const versionInfo = ref('v?.?.?')
 
 // 进度条数据
 const progressData = reactive({
@@ -196,6 +202,14 @@ const {
   showResults,
   settings,
   toastStore
+})
+
+// 响应式更新应用状态
+watch(isProcessing, (newVal) => {
+  console.log('🔄 处理状态变化:', newVal)
+  appStatus.value = newVal ? '识别中' : '就绪'
+  // 当识别状态改变时，也更新一次应用状态以获取最新的模型状态
+  updateApplicationStatus()
 })
 
 const {
@@ -232,10 +246,72 @@ const handleOpenFileDialog = async () => {
 let progressTimer = null
 let progressStartTime = null
 
+// 更新应用状态信息
+const updateApplicationStatus = async () => {
+  try {
+    console.log('🔄 更新应用状态信息...')
+    const statusResult = await getApplicationStatus()
+
+    if (statusResult && statusResult.success && statusResult.status) {
+      const statusData = statusResult.status
+
+      // 更新应用状态
+      if (statusData.appStatus) {
+        appStatus.value = statusData.appStatus
+      }
+
+      // 更新模型状态
+      if (statusData.modelStatus && statusData.modelStatus.statusText) {
+        let statusText = `模型: ${statusData.modelStatus.statusText}`
+
+        // 添加可用模型数量信息
+        if (statusData.modelStatus.availableModels && statusData.modelStatus.totalAvailable) {
+          const availableCount = statusData.modelStatus.totalAvailable
+          if (availableCount > 0) {
+            statusText += ` (${availableCount}个可用模型)`
+          }
+        }
+
+        // 如果有支持的语言，额外显示
+        if (statusData.modelStatus.supportedLanguages && statusData.modelStatus.supportedLanguages.length > 0) {
+          const supportedLangs = statusData.modelStatus.supportedLanguages
+          if (supportedLangs[0] === 'multilingual') {
+            statusText += ` (多语言支持)`
+          } else {
+            statusText += ` (支持: ${supportedLangs.join(', ')})`
+          }
+        }
+
+        modelStatusText.value = statusText
+      }
+
+      // 更新版本信息
+      if (statusData.versionInfo && statusData.versionInfo.fullName) {
+        versionInfo.value = statusData.versionInfo.fullName
+      } else if (statusData.versionInfo && statusData.versionInfo.version) {
+        versionInfo.value = `v${statusData.versionInfo.version}`
+      }
+
+      console.log('✅ 应用状态更新成功:', {
+        appStatus: appStatus.value,
+        modelStatusText: modelStatusText.value,
+        versionInfo: versionInfo.value
+      })
+    }
+  } catch (error) {
+    console.error('❌ 更新应用状态失败:', error)
+    // 设置默认值
+    appStatus.value = '获取失败'
+    modelStatusText.value = '模型: 状态未知'
+    versionInfo.value = 'v?.?.?'
+  }
+}
 
 // 设置保存处理
 const handleSettingsSave = () => {
   toastStore.showSuccess('设置已保存', '应用设置已更新')
+  // 设置保存后更新状态（特别是模型状态可能会改变）
+  updateApplicationStatus()
 }
 
 // 打开网站链接
@@ -485,6 +561,13 @@ onMounted(async () => {
     // 设置浏览器拖拽支持
     setupBrowserDragDrop()
     console.log('✅ 浏览器拖拽支持已设置')
+
+    // 获取并应用真实的应用状态
+    await updateApplicationStatus()
+    console.log('✅ 应用状态更新完成')
+
+    // 设置定时更新状态（每30秒更新一次）
+    setInterval(updateApplicationStatus, 30000)
 
     // toastStore.showSuccess('欢迎', 'Vue组件已完整迁移！v2.0.0', {
     //   duration: 2000

@@ -31,6 +31,8 @@ type App struct {
 	audioService  *services.AudioService
 	exportService *services.ExportService
 	pathManager   *path.PathManager // 新增路径管理器
+	appStatusService *services.AppStatusService // 新增应用状态服务
+	versionService  *services.VersionService    // 新增版本信息服务
 }
 
 // NewApp creates a new App application struct
@@ -63,8 +65,14 @@ func NewApp(thirdParty embed.FS) *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
+	// 初始化日志系统
+	utils.InitLogger()
+	utils.LogInfo("=== 听声辨字应用程序启动 ===")
+	utils.LogInfo("应用上下文初始化完成")
+
 	// 初始化模型服务
 	a.modelService = services.NewModelService(ctx)
+	utils.LogInfo("模型服务初始化完成")
 
 	// 初始化音频服务
 	audioService, err := services.NewAudioService(ctx)
@@ -76,10 +84,12 @@ func (a *App) startup(ctx context.Context) {
 		utils.LogInfo("音频服务初始化成功")
 	}
 
-	// 初始化日志系统
-	utils.InitLogger()
-	utils.LogInfo("=== 听声辨字应用程序启动 ===")
-	utils.LogInfo("应用上下文初始化完成")
+	// 初始化版本信息服务
+	a.versionService = services.NewVersionService()
+	utils.LogInfo("版本信息服务初始化完成")
+
+	// 延迟初始化应用状态服务，等识别服务初始化后再创建
+	// 应用状态服务将在识别服务初始化后创建
 
 	// 提取第三方依赖到本地文件系统
 	result := a.pathManager.ExtractThirdPartyDependencies()
@@ -123,6 +133,11 @@ func (a *App) initializeVoskService() error {
 	}
 
 	a.recognitionService = service
+
+	// 现在初始化应用状态服务
+	a.appStatusService = services.NewAppStatusServiceWithConfig(a.modelService, a.recognitionService, a.config)
+	utils.LogInfo("应用状态服务初始化完成")
+
 	return nil
 }
 
@@ -405,6 +420,27 @@ func (a *App) GetRecognitionStatus() map[string]interface{} {
 		}(),
 	}
 }
+
+// GetApplicationStatus 获取应用状态（包括模型状态和版本信息）
+func (a *App) GetApplicationStatus() map[string]interface{} {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	// 使用应用状态服务获取完整状态
+	if a.appStatusService != nil {
+		// 更新配置到状态服务
+		a.appStatusService.UpdateConfig(a.config)
+
+		return a.appStatusService.GetApplicationStatus(a.isRecognizing)
+	}
+
+	// 如果应用状态服务未初始化，返回基本状态
+	return map[string]interface{}{
+		"success": false,
+		"error":   "应用状态服务未初始化",
+	}
+}
+
 
 // UpdateConfig 更新识别配置
 func (a *App) UpdateConfig(configJSON string) RecognitionResponse {

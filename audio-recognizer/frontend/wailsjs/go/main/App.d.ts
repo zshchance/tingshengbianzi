@@ -8,6 +8,8 @@ export function GetAITemplates():Promise<Record<string, any>>;
 
 export function GetAppRootDirectory():Promise<string>;
 
+export function GetApplicationStatus():Promise<Record<string, any>>;
+
 export function GetAudioDuration(arg1:string):Promise<Record<string, any>>;
 
 export function GetConfig():Promise<string>;

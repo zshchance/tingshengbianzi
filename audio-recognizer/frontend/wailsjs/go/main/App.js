@@ -14,6 +14,10 @@ export function GetAppRootDirectory() {
   return window['go']['main']['App']['GetAppRootDirectory']();
 }
 
+export function GetApplicationStatus() {
+  return window['go']['main']['App']['GetApplicationStatus']();
+}
+
 export function GetAudioDuration(arg1) {
   return window['go']['main']['App']['GetAudioDuration'](arg1);
 }
