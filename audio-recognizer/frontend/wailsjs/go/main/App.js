@@ -10,6 +10,10 @@ export function GetAITemplates() {
   return window['go']['main']['App']['GetAITemplates']();
 }
 
+export function GetAppRootDirectory() {
+  return window['go']['main']['App']['GetAppRootDirectory']();
+}
+
 export function GetAudioDuration(arg1) {
   return window['go']['main']['App']['GetAudioDuration'](arg1);
 }

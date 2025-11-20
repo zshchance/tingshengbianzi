@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"tingshengbianzi/backend/config"
 	"tingshengbianzi/backend/models"
+	"tingshengbianzi/backend/path"
 	"tingshengbianzi/backend/recognition"
 	"tingshengbianzi/backend/services"
 	"tingshengbianzi/backend/utils"
@@ -30,6 +30,7 @@ type App struct {
 	modelService  *services.ModelService
 	audioService  *services.AudioService
 	exportService *services.ExportService
+	pathManager   *path.PathManager // 新增路径管理器
 }
 
 // NewApp creates a new App application struct
@@ -40,13 +41,19 @@ func NewApp(thirdParty embed.FS) *App {
 	// 加载默认配置
 	config := configManager.LoadDefaultConfig()
 
+	// 创建路径管理器
+	pathManager := path.NewPathManager(path.PathManagerConfig{
+		FS: thirdParty,
+	})
+
 	// 创建导出服务
 	exportService := services.NewExportService()
 
 	return &App{
-		config:      config,
+		config:       config,
 		thirdPartyFS: thirdParty,
 		configManager: configManager,
+		pathManager:  pathManager,
 		exportService: exportService,
 	}
 }
@@ -75,15 +82,17 @@ func (a *App) startup(ctx context.Context) {
 	utils.LogInfo("应用上下文初始化完成")
 
 	// 提取第三方依赖到本地文件系统
-	if err := a.extractThirdPartyDependencies(); err != nil {
-		fmt.Printf("提取第三方依赖失败: %v\n", err)
-		utils.LogError("提取第三方依赖失败: %v", err)
+	result := a.pathManager.ExtractThirdPartyDependencies()
+	if !result.Success {
+		fmt.Printf("提取第三方依赖失败，成功: %d，失败: %d\n",
+			result.ExtractedCount, len(result.FailedFiles))
+		utils.LogError("部分第三方依赖提取失败")
 	} else {
 		utils.LogInfo("第三方依赖提取成功")
 	}
 
 	// 初始化AI提示词模板系统
-	if err := a.initializeTemplates(); err != nil {
+	if err := a.pathManager.InitializeTemplates(); err != nil {
 		fmt.Printf("初始化AI模板系统失败: %v\n", err)
 		utils.LogError("初始化AI模板系统失败: %v", err)
 	} else {
@@ -101,168 +110,7 @@ func (a *App) startup(ctx context.Context) {
 	utils.LogInfo("应用程序启动完成")
 }
 
-// extractThirdPartyDependencies 提取嵌入的第三方依赖到本地文件系统
-func (a *App) extractThirdPartyDependencies() error {
-	targetDir, err := a.getThirdPartyTargetDirectory()
-	if err != nil {
-		return fmt.Errorf("获取目标目录失败: %v", err)
-	}
 
-	fmt.Printf("🎯 第三方依赖目标目录: %s\n", targetDir)
-
-	if err := a.ensureTargetDirectory(targetDir); err != nil {
-		return fmt.Errorf("创建目标目录失败: %v", err)
-	}
-
-	requiredFiles := a.getRequiredThirdPartyFiles()
-	if err := a.extractThirdPartyFiles(requiredFiles, targetDir); err != nil {
-		return fmt.Errorf("提取第三方文件失败: %v", err)
-	}
-
-	fmt.Printf("✅ 第三方依赖提取完成，共提取 %d 个文件\n", len(requiredFiles))
-	return nil
-}
-
-// getThirdPartyTargetDirectory 获取第三方依赖目标目录
-func (a *App) getThirdPartyTargetDirectory() (string, error) {
-	exePath, err := os.Executable()
-	if err != nil {
-		return "", fmt.Errorf("获取可执行文件路径失败: %v", err)
-	}
-
-	exeDir := filepath.Dir(exePath)
-
-	if strings.Contains(exeDir, ".app/Contents/MacOS") {
-		// 在.app包中：提取到 Resources/third-party/bin
-		return filepath.Join(filepath.Dir(exeDir), "Resources", "third-party", "bin"), nil
-	}
-
-	// 开发环境：提取到项目根目录的 third-party/bin
-	appRoot := getAppRootDirectory()
-	return filepath.Join(appRoot, "third-party", "bin"), nil
-}
-
-// ensureTargetDirectory 确保目标目录存在
-func (a *App) ensureTargetDirectory(targetDir string) error {
-	return os.MkdirAll(targetDir, 0755)
-}
-
-// getRequiredThirdPartyFiles 获取需要提取的第三方文件列表
-func (a *App) getRequiredThirdPartyFiles() []string {
-	return []string{
-		"third-party/bin/whisper-cli",
-		"third-party/bin/ffmpeg",
-		"third-party/bin/ffprobe",
-	}
-}
-
-// extractThirdPartyFiles 批量提取第三方文件
-func (a *App) extractThirdPartyFiles(files []string, targetDir string) error {
-	for _, filePath := range files {
-		if err := a.extractThirdPartyFile(filePath, targetDir); err != nil {
-			return fmt.Errorf("提取文件 %s 失败: %v", filePath, err)
-		}
-	}
-	return nil
-}
-
-// extractThirdPartyFile 提取单个第三方依赖文件
-func (a *App) extractThirdPartyFile(embedPath, targetDir string) error {
-	fmt.Printf("📦 提取文件: %s\n", embedPath)
-
-	// 从嵌入的文件系统中读取文件
-	data, err := a.thirdPartyFS.ReadFile(embedPath)
-	if err != nil {
-		return fmt.Errorf("读取嵌入文件失败: %v", err)
-	}
-
-	// 获取文件名
-	fileName := filepath.Base(embedPath)
-	targetPath := filepath.Join(targetDir, fileName)
-
-	// 检查目标文件是否已存在且内容相同
-	if existingData, err := os.ReadFile(targetPath); err == nil {
-		if len(existingData) == len(data) {
-			fmt.Printf("⏭️ 文件已存在且内容相同: %s\n", targetPath)
-			return nil
-		}
-	}
-
-	// 写入文件
-	if err := os.WriteFile(targetPath, data, 0755); err != nil {
-		return fmt.Errorf("写入文件失败: %v", err)
-	}
-
-	// 验证文件是否可执行
-	if err := os.Chmod(targetPath, 0755); err != nil {
-		fmt.Printf("⚠️ 设置可执行权限失败: %v\n", err)
-	}
-
-	fmt.Printf("✅ 文件提取成功: %s (%d bytes)\n", targetPath, len(data))
-	return nil
-}
-
-// initializeTemplates 初始化AI提示词模板系统
-func (a *App) initializeTemplates() error {
-	templatePath := a.resolveTemplatePath()
-
-	if err := a.ensureTemplateFileExists(templatePath); err != nil {
-		return fmt.Errorf("确保模板文件存在失败: %v", err)
-	}
-
-	if err := a.loadTemplateSystem(templatePath); err != nil {
-		fmt.Printf("加载AI模板配置失败: %v，将使用硬编码模板\n", err)
-		return nil // 允许应用继续运行
-	}
-
-	fmt.Printf("✅ AI模板系统初始化成功\n")
-	return nil
-}
-
-// resolveTemplatePath 解析模板文件路径
-func (a *App) resolveTemplatePath() string {
-	userConfigDir, configSubDir := config.GetUserConfigDirectory()
-
-	if configSubDir == "" {
-		// 用户主目录中的模板
-		return filepath.Join(userConfigDir, "templates.json")
-	}
-
-	// 项目目录中的模板
-	return filepath.Join(userConfigDir, configSubDir, "templates.json")
-}
-
-// ensureTemplateFileExists 确保模板文件存在
-func (a *App) ensureTemplateFileExists(templatePath string) error {
-	// 如果文件已存在，直接返回
-	if _, err := os.Stat(templatePath); err == nil {
-		return nil
-	}
-
-	// 尝试复制内置模板
-	builtinTemplatePath := filepath.Join(getAppRootDirectory(), "config", "templates.json")
-	return a.copyBuiltinTemplate(builtinTemplatePath, templatePath)
-}
-
-// copyBuiltinTemplate 复制内置模板
-func (a *App) copyBuiltinTemplate(builtinPath, targetPath string) error {
-	builtinData, err := os.ReadFile(builtinPath)
-	if err != nil {
-		return fmt.Errorf("读取内置模板失败: %v", err)
-	}
-
-	if err := os.WriteFile(targetPath, builtinData, 0644); err != nil {
-		return fmt.Errorf("复制模板文件失败: %v", err)
-	}
-
-	fmt.Printf("✅ 已复制内置模板到用户目录: %s\n", targetPath)
-	return nil
-}
-
-// loadTemplateSystem 加载模板系统
-func (a *App) loadTemplateSystem(templatePath string) error {
-	return utils.InitializeTemplates(templatePath)
-}
 
 // initializeVoskService 初始化语音识别服务
 func (a *App) initializeVoskService() error {
@@ -278,88 +126,9 @@ func (a *App) initializeVoskService() error {
 	return nil
 }
 
-// getAppRootDirectory 获取应用根目录
-func getAppRootDirectory() string {
-	exePath, err := os.Executable()
-	if err != nil {
-		exePath = "."
-	}
-	exeDir := filepath.Dir(exePath)
-
-	// 检查是否在 Wails 开发环境的 .app 包中
-	if strings.Contains(exeDir, ".app/Contents/MacOS") {
-		return findProjectRootFromAppBundle(exeDir)
-	}
-
-	// 检查是否在临时构建目录中
-	if isBuildDirectory(exeDir) {
-		return findProjectRootFromBuildDir(exeDir)
-	}
-
-	// 检查当前目录是否已经是项目根目录
-	if isProjectRootDirectory(exeDir) {
-		fmt.Printf("🎯 当前目录就是项目根目录: %s\n", exeDir)
-		return exeDir
-	}
-
-	fmt.Printf("📁 使用可执行文件目录: %s\n", exeDir)
-	return exeDir
-}
-
-// isBuildDirectory 检查是否为构建目录
-func isBuildDirectory(dir string) bool {
-	base := filepath.Base(dir)
-	return base == "build" || base == "tmp"
-}
-
-// isProjectRootDirectory 检查是否为项目根目录
-func isProjectRootDirectory(dir string) bool {
-	projectFiles := []string{"wails.json", "go.mod", "main.go"}
-	for _, marker := range projectFiles {
-		if _, err := os.Stat(filepath.Join(dir, marker)); err == nil {
-			return true
-		}
-	}
-	return false
-}
-
-// findProjectRootFromAppBundle 从.app包中查找项目根目录
-func findProjectRootFromAppBundle(exeDir string) string {
-	searchDir := exeDir
-	maxDepth := 10
-
-	for i := 0; i < maxDepth; i++ {
-		if isProjectRootDirectory(searchDir) {
-			fmt.Printf("🎯 检测到项目根目录: %s\n", searchDir)
-			return searchDir
-		}
-
-		// 如果到了 build 目录，再向上找一级
-		if filepath.Base(searchDir) == "build" {
-			searchDir = filepath.Dir(searchDir)
-			continue
-		}
-
-		searchDir = filepath.Dir(searchDir)
-	}
-
-	return exeDir
-}
-
-// findProjectRootFromBuildDir 从构建目录查找项目根目录
-func findProjectRootFromBuildDir(exeDir string) string {
-	searchDir := exeDir
-	maxDepth := 5
-
-	for i := 0; i < maxDepth; i++ {
-		if isProjectRootDirectory(searchDir) {
-			fmt.Printf("🎯 检测到项目根目录: %s\n", searchDir)
-			return searchDir
-		}
-		searchDir = filepath.Dir(searchDir)
-	}
-
-	return exeDir
+// GetAppRootDirectory 获取应用根目录（委托给路径管理器）
+func (a *App) GetAppRootDirectory() string {
+	return a.pathManager.GetAppRootDirectory()
 }
 
 
