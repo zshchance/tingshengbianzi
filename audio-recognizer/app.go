@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"tingshengbianzi/backend/config"
@@ -30,6 +29,7 @@ type App struct {
 	configManager *config.ConfigManager
 	modelService  *services.ModelService
 	audioService  *services.AudioService
+	exportService *services.ExportService
 }
 
 // NewApp creates a new App application struct
@@ -40,10 +40,14 @@ func NewApp(thirdParty embed.FS) *App {
 	// 加载默认配置
 	config := configManager.LoadDefaultConfig()
 
+	// 创建导出服务
+	exportService := services.NewExportService()
+
 	return &App{
 		config:      config,
 		thirdPartyFS: thirdParty,
 		configManager: configManager,
+		exportService: exportService,
 	}
 }
 
@@ -709,66 +713,22 @@ func (a *App) GetAudioDuration(filePath string) map[string]interface{} {
 
 // ExportResult 导出识别结果
 func (a *App) ExportResult(resultJSON, format, outputPath string) RecognitionResponse {
-	var result models.RecognitionResult
-	if err := json.Unmarshal([]byte(resultJSON), &result); err != nil {
+	if a.exportService == nil {
 		return RecognitionResponse{
 			Success: false,
 			Error: models.NewRecognitionError(
-				models.ErrorCodeInvalidConfig,
-				"识别结果格式无效",
-				err.Error(),
+				"SERVICE_NOT_INITIALIZED",
+				"导出服务未初始化",
+				"",
 			),
 		}
 	}
 
-	// 根据格式导出结果
-	var content string
-	var err error
-
-	switch format {
-	case "txt":
-		content = a.exportToTXT(result)
-	case "srt":
-		content = a.exportToSRT(result)
-	case "vtt":
-		content = a.exportToVTT(result)
-	case "json":
-		contentBytes, err := json.MarshalIndent(result, "", "  ")
-		content = string(contentBytes)
-		if err != nil {
-			err = fmt.Errorf("JSON序列化失败: %w", err)
-		}
-	default:
-		return RecognitionResponse{
-			Success: false,
-			Error: models.NewRecognitionError(
-				"INVALID_EXPORT_FORMAT",
-				"不支持的导出格式",
-				format,
-			),
-		}
-	}
-
+	err := a.exportService.ExportResult(resultJSON, format, outputPath)
 	if err != nil {
 		return RecognitionResponse{
 			Success: false,
-			Error: models.NewRecognitionError(
-				"EXPORT_FAILED",
-				"导出失败",
-				err.Error(),
-			),
-		}
-	}
-
-	// 写入文件
-	if err := os.WriteFile(outputPath, []byte(content), 0644); err != nil {
-		return RecognitionResponse{
-			Success: false,
-			Error: models.NewRecognitionError(
-				models.ErrorCodePermissionDenied,
-				"文件写入失败",
-				err.Error(),
-			),
+			Error:   err,
 		}
 	}
 
@@ -777,46 +737,6 @@ func (a *App) ExportResult(resultJSON, format, outputPath string) RecognitionRes
 	}
 }
 
-// exportToTXT 导出为纯文本格式
-func (a *App) exportToTXT(result models.RecognitionResult) string {
-	return result.Text
-}
-
-// exportToSRT 导出为SRT字幕格式
-func (a *App) exportToSRT(result models.RecognitionResult) string {
-	var srt strings.Builder
-
-	for i, word := range result.Words {
-		startSec := int64(word.Start)
-		startMS := int64((word.Start - float64(startSec)) * 1000)
-		endSec := int64(word.End)
-		endMS := int64((word.End - float64(endSec)) * 1000)
-
-		startTime := time.Unix(startSec, startMS*int64(time.Millisecond))
-		endTime := time.Unix(endSec, endMS*int64(time.Millisecond))
-
-		srt.WriteString(fmt.Sprintf("%d\n", i+1))
-		srt.WriteString(fmt.Sprintf("%s --> %s\n",
-			startTime.Format("15:04:05,000"),
-			endTime.Format("15:04:05,000")))
-		srt.WriteString(fmt.Sprintf("%s\n\n", word.Text))
-	}
-
-	return srt.String()
-}
-
-// exportToVTT 导出为WebVTT格式
-func (a *App) exportToVTT(result models.RecognitionResult) string {
-	var vtt strings.Builder
-	vtt.WriteString("WEBVTT\n\n")
-
-	for _, word := range result.Words {
-		vtt.WriteString(fmt.Sprintf("%.2f --> %.2f\n", word.Start, word.End))
-		vtt.WriteString(fmt.Sprintf("%s\n\n", word.Text))
-	}
-
-	return vtt.String()
-}
 
 
 
