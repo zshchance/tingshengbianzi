@@ -638,14 +638,17 @@ func (a *App) LoadModel(language, modelPath string) RecognitionResponse {
 
 // SelectModelDirectory 选择模型文件夹
 func (a *App) SelectModelDirectory() map[string]interface{} {
-	dialogOptions := runtime.OpenDialogOptions{
-		Title:            "选择模型文件夹",
-		DefaultDirectory: "",
-		DefaultFilename:  "",
+	// 使用工具函数获取对话框选项
+	dialogOptions := utils.GetModelDirectoryDialogOptions()
+
+	options := runtime.OpenDialogOptions{
+		Title:            dialogOptions["title"].(string),
+		DefaultDirectory: dialogOptions["defaultDirectory"].(string),
+		DefaultFilename:  dialogOptions["defaultFilename"].(string),
 		Filters:          []runtime.FileFilter{}, // 不使用文件过滤器，显示所有文件夹
 	}
 
-	selectedDirectory, err := runtime.OpenDirectoryDialog(a.ctx, dialogOptions)
+	selectedDirectory, err := runtime.OpenDirectoryDialog(a.ctx, options)
 	if err != nil {
 		return map[string]interface{}{
 			"success": false,
@@ -676,8 +679,9 @@ func (a *App) SelectModelDirectory() map[string]interface{} {
 		}
 	}
 
-	// 扫描目录中的模型文件
-	models := a.scanModelFiles(selectedDirectory)
+	// 使用模型验证器扫描目录中的模型文件
+	validator := utils.NewWhisperModelValidator()
+	models := validator.ScanModelFiles(selectedDirectory)
 
 	return map[string]interface{}{
 		"success": true,
@@ -688,19 +692,26 @@ func (a *App) SelectModelDirectory() map[string]interface{} {
 
 // SelectModelFile 选择模型文件
 func (a *App) SelectModelFile() map[string]interface{} {
-	dialogOptions := runtime.OpenDialogOptions{
-		Title:            "选择Whisper模型文件",
-		DefaultDirectory: "",
-		DefaultFilename:  "",
-		Filters: []runtime.FileFilter{
-			{
-				DisplayName: "Whisper模型文件",
-				Pattern:     "*.bin",
-			},
-		},
+	// 使用工具函数获取对话框选项
+	dialogOptions := utils.GetModelFileDialogOptions()
+
+	// 转换为runtime类型
+	filters := make([]runtime.FileFilter, 0)
+	for _, filter := range dialogOptions["filters"].([]map[string]interface{}) {
+		filters = append(filters, runtime.FileFilter{
+			DisplayName: filter["displayName"].(string),
+			Pattern:     filter["pattern"].(string),
+		})
 	}
 
-	selectedFile, err := runtime.OpenFileDialog(a.ctx, dialogOptions)
+	options := runtime.OpenDialogOptions{
+		Title:            dialogOptions["title"].(string),
+		DefaultDirectory: dialogOptions["defaultDirectory"].(string),
+		DefaultFilename:  dialogOptions["defaultFilename"].(string),
+		Filters:          filters,
+	}
+
+	selectedFile, err := runtime.OpenFileDialog(a.ctx, options)
 	if err != nil {
 		return map[string]interface{}{
 			"success": false,
@@ -731,9 +742,10 @@ func (a *App) SelectModelFile() map[string]interface{} {
 		}
 	}
 
-	// 验证是否为有效的Whisper模型文件
+	// 使用模型验证器验证文件
+	validator := utils.NewWhisperModelValidator()
 	fileName := filepath.Base(selectedFile)
-	if !a.isValidWhisperModel(fileName) {
+	if !validator.IsValidWhisperModel(fileName) {
 		return map[string]interface{}{
 			"success": false,
 			"error":   fmt.Sprintf("文件 '%s' 不是有效的Whisper模型文件", fileName),
@@ -749,204 +761,10 @@ func (a *App) SelectModelFile() map[string]interface{} {
 		"fileName":   fileName,
 		"modelPath":  modelDir,
 		"fileSize":   fileInfo.Size(),
-		"fileSizeStr": a.formatFileSize(fileInfo.Size()),
+		"fileSizeStr": utils.FormatFileSize(fileInfo.Size()),
 	}
 }
 
-// isValidWhisperModel 验证是否为有效的Whisper模型文件
-func (a *App) isValidWhisperModel(fileName string) bool {
-	// 支持的模式匹配
-	validPatterns := []string{
-		// 标准模型
-		"ggml-tiny.bin",
-		"ggml-base.bin",
-		"ggml-small.bin",
-		"ggml-medium.bin",
-		"ggml-large.bin",
-
-		// 版本化模型
-		"ggml-large-v1.bin",
-		"ggml-large-v2.bin",
-		"ggml-large-v3.bin",
-
-		// Turbo变体模型
-		"ggml-tiny*.bin",
-		"ggml-base*.bin",
-		"ggml-small*.bin",
-		"ggml-medium*.bin",
-		"ggml-large*.bin",
-
-		// 英文专用模型
-		"ggml-tiny.en.bin",
-		"ggml-base.en.bin",
-		"ggml-small.en.bin",
-		"ggml-medium.en.bin",
-		"ggml-large.en.bin",
-
-		// 量化模型 (q4, q5, q8等)
-		"ggml-*.q*.bin",
-		"ggml-*.q4_0.bin",
-		"ggml-*.q4_1.bin",
-		"ggml-*.q5_0.bin",
-		"ggml-*.q5_1.bin",
-		"ggml-*.q8_0.bin",
-
-		// 特殊后缀模型
-		"*.bin", // 最后的兜底模式：任何.bin文件都可能是模型
-	}
-
-	// 精确匹配常见模型
-	exactModels := []string{
-		"ggml-tiny.bin",
-		"ggml-base.bin",
-		"ggml-small.bin",
-		"ggml-medium.bin",
-		"ggml-large.bin",
-		"ggml-large-v1.bin",
-		"ggml-large-v2.bin",
-		"ggml-large-v3.bin",
-		"ggml-large-v3-turbo.bin",
-		"ggml-tiny.en.bin",
-		"ggml-base.en.bin",
-		"ggml-small.en.bin",
-		"ggml-medium.en.bin",
-		"ggml-large.en.bin",
-	}
-
-	for _, exactModel := range exactModels {
-		if fileName == exactModel {
-			return true
-		}
-	}
-
-	// 模式匹配
-	for _, pattern := range validPatterns {
-		matched, _ := filepath.Match(pattern, fileName)
-		if matched {
-			// 额外验证：确保文件名包含模型相关的关键词
-			if a.isValidWhisperModelName(fileName) {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
-// isValidWhisperModelName 验证文件名是否包含有效的Whisper模型关键词
-func (a *App) isValidWhisperModelName(fileName string) bool {
-	// 转换为小写进行匹配
-	lowerFileName := strings.ToLower(fileName)
-
-	// 必须包含的关键词
-	requiredKeywords := []string{"ggml"}
-
-	// 可选的模型大小关键词
-	modelSizes := []string{"tiny", "base", "small", "medium", "large"}
-
-	// 检查是否包含必需关键词
-	for _, keyword := range requiredKeywords {
-		if !strings.Contains(lowerFileName, keyword) {
-			return false
-		}
-	}
-
-	// 检查是否包含至少一个模型大小关键词
-	for _, size := range modelSizes {
-		if strings.Contains(lowerFileName, size) {
-			return true
-		}
-	}
-
-	// 特殊处理其他可能的模型命名
-	specialCases := []string{
-		"whisper", "model", "speech", "recognition",
-	}
-	for _, special := range specialCases {
-		if strings.Contains(lowerFileName, special) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// scanModelFiles 扫描模型文件夹
-func (a *App) scanModelFiles(directory string) []map[string]interface{} {
-	var models []map[string]interface{}
-
-	// 扫描目录中的所有文件
-	if entries, err := os.ReadDir(directory); err == nil {
-		for _, entry := range entries {
-			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".bin") {
-				fileName := entry.Name()
-				if a.isValidWhisperModel(fileName) {
-					modelPath := filepath.Join(directory, fileName)
-					if fileInfo, err := entry.Info(); err == nil {
-						size := fileInfo.Size()
-						sizeStr := a.formatFileSize(size)
-						models = append(models, map[string]interface{}{
-							"name":    fileName,
-							"path":    modelPath,
-							"type":    "whisper",
-							"size":    size,
-							"sizeStr": sizeStr,
-						})
-					}
-				}
-			}
-		}
-	}
-
-	// 检查whisper子目录
-	whisperDir := filepath.Join(directory, "whisper")
-	if dirInfo, err := os.Stat(whisperDir); err == nil && dirInfo.IsDir() {
-		if entries, err := os.ReadDir(whisperDir); err == nil {
-			for _, entry := range entries {
-				if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".bin") {
-					fileName := entry.Name()
-					if a.isValidWhisperModel(fileName) {
-						modelPath := filepath.Join(whisperDir, fileName)
-						if fileInfo, err := entry.Info(); err == nil {
-							size := fileInfo.Size()
-							sizeStr := a.formatFileSize(size)
-							models = append(models, map[string]interface{}{
-								"name":    filepath.Join("whisper", fileName),
-								"path":    modelPath,
-								"type":    "whisper",
-								"size":    size,
-								"sizeStr": sizeStr,
-							})
-						}
-					}
-				}
-			}
-		}
-	}
-
-	return models
-}
-
-// formatFileSize 格式化文件大小
-func (a *App) formatFileSize(bytes int64) string {
-	if bytes == 0 {
-		return "0 B"
-	}
-
-	const unit = 1024
-	if bytes < unit {
-		return fmt.Sprintf("%d B", bytes)
-	}
-
-	div, exp := int64(unit), 0
-	for n := bytes / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-
-	units := []string{"KB", "MB", "GB", "TB"}
-	return fmt.Sprintf("%.1f %s", float64(bytes)/float64(div), units[exp])
-}
 
 // GetModelInfo 获取模型信息
 func (a *App) GetModelInfo(directory string) map[string]interface{} {
@@ -965,21 +783,22 @@ func (a *App) GetModelInfo(directory string) map[string]interface{} {
 		}
 	}
 
-	// 扫描模型文件
-	models := a.scanModelFiles(directory)
+	// 使用模型验证器扫描模型文件
+	validator := utils.NewWhisperModelValidator()
+	models := validator.ScanModelFiles(directory)
 
 	return map[string]interface{}{
 		"success":      true,
 		"directory":    directory,
 		"models":       models,
 		"modelCount":   len(models),
-		"hasWhisper":   a.hasWhisperModel(models),
-		"recommendations": a.getRecommendations(models),
+		"hasWhisper":   hasWhisperModel(models),
+		"recommendations": getRecommendations(models),
 	}
 }
 
 // hasWhisperModel 检查是否有Whisper模型
-func (a *App) hasWhisperModel(models []map[string]interface{}) bool {
+func hasWhisperModel(models []map[string]interface{}) bool {
 	for _, model := range models {
 		if model["type"] == "whisper" {
 			return true
@@ -989,9 +808,9 @@ func (a *App) hasWhisperModel(models []map[string]interface{}) bool {
 }
 
 // getRecommendations 获取模型推荐
-func (a *App) getRecommendations(models []map[string]interface{}) []string {
+func getRecommendations(models []map[string]interface{}) []string {
 	var recommendations []string
-	hasWhisper := a.hasWhisperModel(models)
+	hasWhisper := hasWhisperModel(models)
 
 	if !hasWhisper {
 		recommendations = append(recommendations, "建议下载Whisper Base模型以开始使用语音识别功能")
