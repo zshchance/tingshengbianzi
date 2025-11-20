@@ -282,18 +282,37 @@ export function useRecognitionEvents({
     console.log('🤖 开始生成AI优化结果（前端模板系统）')
 
     try {
-      const templateKey = settings.value.aiTemplate || 'basic'
+      const templateKey = settings.aiTemplate || 'basic'
       console.log('🔧 使用AI模板类型:', templateKey)
 
       // 使用前端生成AI优化提示词
-      const aiResult = await generateAIPrompt(templateKey, result)
-      console.log('🔧 AI优化提示词生成完成，长度:', aiResult.prompt.length)
+      try {
+        // 从结果中提取时间戳文本
+        const timestampedText = result.timestampedText ||
+                               (result.segments && result.segments.length > 0
+                                ? result.segments.map(s => s.text).join(' ')
+                                : result.text || '')
 
-      if (aiResult.success) {
-        result.aiOptimizationPrompt = aiResult.prompt
-        console.log('✅ AI优化提示词生成完成')
-      } else {
-        throw new Error('AI优化提示词生成失败')
+        console.log('🔧 提取的文本长度:', timestampedText.length)
+
+        if (timestampedText) {
+          const aiPrompt = generateAIPrompt(timestampedText)
+
+          if (aiPrompt && typeof aiPrompt === 'string' && aiPrompt.trim()) {
+            console.log('🔧 AI优化提示词生成完成，长度:', aiPrompt.length)
+            result.aiOptimizationPrompt = aiPrompt
+            console.log('✅ AI优化提示词生成完成')
+          } else {
+            console.warn('⚠️ AI优化提示词生成为空或无效:', aiPrompt)
+            result.aiOptimizationPrompt = 'AI优化提示词生成失败，返回结果为空。'
+          }
+        } else {
+          console.warn('⚠️ 没有可用的文本内容进行AI优化')
+          result.aiOptimizationPrompt = '没有可用的文本内容进行AI优化。'
+        }
+      } catch (promptError) {
+        console.error('❌ AI优化提示词生成过程中出错:', promptError)
+        result.aiOptimizationPrompt = 'AI优化提示词生成失败: ' + promptError.message
       }
     } catch (error) {
       console.error('❌ AI优化处理失败:', error)
