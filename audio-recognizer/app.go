@@ -16,6 +16,7 @@ import (
 	"tingshengbianzi/backend/config"
 	"tingshengbianzi/backend/models"
 	"tingshengbianzi/backend/recognition"
+	"tingshengbianzi/backend/services"
 	"tingshengbianzi/backend/utils"
 )
 
@@ -28,6 +29,7 @@ type App struct {
 	mu          sync.RWMutex
 	thirdPartyFS embed.FS
 	configManager *config.ConfigManager
+	modelService  *services.ModelService
 }
 
 // NewApp creates a new App application struct
@@ -49,6 +51,9 @@ func NewApp(thirdParty embed.FS) *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	// 初始化模型服务
+	a.modelService = services.NewModelService(ctx)
 
 	// 初始化日志系统
 	utils.InitLogger()
@@ -638,193 +643,36 @@ func (a *App) LoadModel(language, modelPath string) RecognitionResponse {
 
 // SelectModelDirectory 选择模型文件夹
 func (a *App) SelectModelDirectory() map[string]interface{} {
-	// 使用工具函数获取对话框选项
-	dialogOptions := utils.GetModelDirectoryDialogOptions()
-
-	options := runtime.OpenDialogOptions{
-		Title:            dialogOptions["title"].(string),
-		DefaultDirectory: dialogOptions["defaultDirectory"].(string),
-		DefaultFilename:  dialogOptions["defaultFilename"].(string),
-		Filters:          []runtime.FileFilter{}, // 不使用文件过滤器，显示所有文件夹
-	}
-
-	selectedDirectory, err := runtime.OpenDirectoryDialog(a.ctx, options)
-	if err != nil {
+	if a.modelService == nil {
 		return map[string]interface{}{
 			"success": false,
-			"error":   err.Error(),
+			"error":   "模型服务未初始化",
 		}
 	}
-
-	if selectedDirectory == "" {
-		return map[string]interface{}{
-			"success": false,
-			"error":   "未选择文件夹",
-		}
-	}
-
-	// 检查目录是否存在
-	fileInfo, err := os.Stat(selectedDirectory)
-	if err != nil {
-		return map[string]interface{}{
-			"success": false,
-			"error":   fmt.Sprintf("无法访问文件夹: %v", err),
-		}
-	}
-
-	if !fileInfo.IsDir() {
-		return map[string]interface{}{
-			"success": false,
-			"error":   "选择的路径不是文件夹",
-		}
-	}
-
-	// 使用模型验证器扫描目录中的模型文件
-	validator := utils.NewWhisperModelValidator()
-	models := validator.ScanModelFiles(selectedDirectory)
-
-	return map[string]interface{}{
-		"success": true,
-		"path":    selectedDirectory,
-		"models":  models,
-	}
+	return a.modelService.SelectModelDirectory()
 }
 
 // SelectModelFile 选择模型文件
 func (a *App) SelectModelFile() map[string]interface{} {
-	// 使用工具函数获取对话框选项
-	dialogOptions := utils.GetModelFileDialogOptions()
-
-	// 转换为runtime类型
-	filters := make([]runtime.FileFilter, 0)
-	for _, filter := range dialogOptions["filters"].([]map[string]interface{}) {
-		filters = append(filters, runtime.FileFilter{
-			DisplayName: filter["displayName"].(string),
-			Pattern:     filter["pattern"].(string),
-		})
-	}
-
-	options := runtime.OpenDialogOptions{
-		Title:            dialogOptions["title"].(string),
-		DefaultDirectory: dialogOptions["defaultDirectory"].(string),
-		DefaultFilename:  dialogOptions["defaultFilename"].(string),
-		Filters:          filters,
-	}
-
-	selectedFile, err := runtime.OpenFileDialog(a.ctx, options)
-	if err != nil {
+	if a.modelService == nil {
 		return map[string]interface{}{
 			"success": false,
-			"error":   fmt.Sprintf("文件选择失败: %v", err),
+			"error":   "模型服务未初始化",
 		}
 	}
-
-	if selectedFile == "" {
-		return map[string]interface{}{
-			"success": false,
-			"error":   "未选择文件",
-		}
-	}
-
-	// 检查文件是否存在
-	fileInfo, err := os.Stat(selectedFile)
-	if err != nil {
-		return map[string]interface{}{
-			"success": false,
-			"error":   fmt.Sprintf("无法访问文件: %v", err),
-		}
-	}
-
-	if fileInfo.IsDir() {
-		return map[string]interface{}{
-			"success": false,
-			"error":   "选择的路径是文件夹，请选择模型文件",
-		}
-	}
-
-	// 使用模型验证器验证文件
-	validator := utils.NewWhisperModelValidator()
-	fileName := filepath.Base(selectedFile)
-	if !validator.IsValidWhisperModel(fileName) {
-		return map[string]interface{}{
-			"success": false,
-			"error":   fmt.Sprintf("文件 '%s' 不是有效的Whisper模型文件", fileName),
-		}
-	}
-
-	// 获取文件目录
-	modelDir := filepath.Dir(selectedFile)
-
-	return map[string]interface{}{
-		"success":    true,
-		"filePath":   selectedFile,
-		"fileName":   fileName,
-		"modelPath":  modelDir,
-		"fileSize":   fileInfo.Size(),
-		"fileSizeStr": utils.FormatFileSize(fileInfo.Size()),
-	}
+	return a.modelService.SelectModelFile()
 }
 
 
 // GetModelInfo 获取模型信息
 func (a *App) GetModelInfo(directory string) map[string]interface{} {
-	if directory == "" {
+	if a.modelService == nil {
 		return map[string]interface{}{
 			"success": false,
-			"error":   "目录路径为空",
+			"error":   "模型服务未初始化",
 		}
 	}
-
-	// 检查目录是否存在
-	if _, err := os.Stat(directory); os.IsNotExist(err) {
-		return map[string]interface{}{
-			"success": false,
-			"error":   "目录不存在",
-		}
-	}
-
-	// 使用模型验证器扫描模型文件
-	validator := utils.NewWhisperModelValidator()
-	models := validator.ScanModelFiles(directory)
-
-	return map[string]interface{}{
-		"success":      true,
-		"directory":    directory,
-		"models":       models,
-		"modelCount":   len(models),
-		"hasWhisper":   hasWhisperModel(models),
-		"recommendations": getRecommendations(models),
-	}
-}
-
-// hasWhisperModel 检查是否有Whisper模型
-func hasWhisperModel(models []map[string]interface{}) bool {
-	for _, model := range models {
-		if model["type"] == "whisper" {
-			return true
-		}
-	}
-	return false
-}
-
-// getRecommendations 获取模型推荐
-func getRecommendations(models []map[string]interface{}) []string {
-	var recommendations []string
-	hasWhisper := hasWhisperModel(models)
-
-	if !hasWhisper {
-		recommendations = append(recommendations, "建议下载Whisper Base模型以开始使用语音识别功能")
-	}
-
-	if len(models) == 0 {
-		recommendations = append(recommendations, "当前目录中没有检测到任何模型文件")
-	}
-
-	if len(recommendations) == 0 {
-		recommendations = append(recommendations, "模型配置正常，可以开始使用语音识别功能")
-	}
-
-	return recommendations
+	return a.modelService.GetModelInfo(directory)
 }
 
 // SelectAudioFile 选择音频文件
