@@ -103,6 +103,15 @@
 
     <!-- 关于模态框 -->
     <AboutModal :visible="showAboutModal" @close="showAboutModal = false" />
+
+    <!-- 模型提醒模态框 -->
+    <ModelNotificationModal
+      :visible="showModelNotification"
+      :model-status="modelStatusData || {}"
+      @close="showModelNotification = false"
+      @open-settings="handleOpenSettingsFromNotification"
+      @show-help="handleShowHelpFromNotification"
+    />
   </div>
 </template>
 
@@ -125,6 +134,7 @@ import FileDropZone from './components/FileDropZone.vue'
 import SettingsModal from './components/SettingsModal.vue'
 import ResultDisplay from './components/ResultDisplay.vue'
 import AboutModal from './components/AboutModal.vue'
+import ModelNotificationModal from './components/ModelNotificationModal.vue'
 
 const toastStore = useToastStore()
 
@@ -176,6 +186,8 @@ const showSettings = ref(false)
 const showAboutModal = ref(false)
 const recognitionResult = ref(null)
 const showResults = ref(false)
+const showModelNotification = ref(false)
+const modelStatusData = ref(null)
 
 // 动态状态信息
 const appStatus = ref('加载中...')
@@ -247,7 +259,7 @@ let progressTimer = null
 let progressStartTime = null
 
 // 更新应用状态信息
-const updateApplicationStatus = async () => {
+const updateApplicationStatus = async (checkModelNotification = false) => {
   try {
     console.log('🔄 更新应用状态信息...')
     const statusResult = await getApplicationStatus()
@@ -262,37 +274,57 @@ const updateApplicationStatus = async () => {
 
       // 更新模型状态
       if (statusData.modelStatus && statusData.modelStatus.statusText) {
-        // 构造新的状态显示格式（单行）
-        let statusText = "模型: 多语言模型已加载"
+        // 保存模型状态数据用于通知模态框
+        modelStatusData.value = statusData.modelStatus
 
-        // 添加支持的语言数量信息
-        if (statusData.modelStatus.supportedLanguages && statusData.modelStatus.supportedLanguages.length > 0) {
-          const supportedCount = statusData.modelStatus.supportedLanguages.length
-          statusText += ` (支持 ${supportedCount} 种语言)`
-        }
+        let statusText = ""
 
-        // 添加可用模型数量信息
-        if (statusData.modelStatus.availableModels && statusData.modelStatus.totalAvailable) {
-          const availableCount = statusData.modelStatus.totalAvailable
-          statusText += ` (${availableCount}个可用模型)`
-        }
+        // 检查模型状态并生成相应的显示文本
+        if (!statusData.modelStatus.isLoaded) {
+          // 模型未加载的情况
+          if (!statusData.modelStatus.modelPath || statusData.modelStatus.modelPath === '') {
+            statusText = "模型: 未配置模型路径"
+          } else if (!statusData.modelStatus.availableModels || statusData.modelStatus.availableModels.length === 0) {
+            statusText = `模型: 目录为空 (${statusData.modelStatus.modelPath})`
+          } else {
+            statusText = "模型: 模型加载失败"
+          }
+        } else if (statusData.modelStatus.isLoaded && statusData.modelStatus.availableModels && statusData.modelStatus.availableModels.length > 0) {
+          // 模型已加载的情况
+          statusText = "模型: 多语言模型已加载"
 
-        // 添加当前模型名称
-        let currentModelName = ""
+          // 添加支持的语言数量信息
+          if (statusData.modelStatus.supportedLanguages && statusData.modelStatus.supportedLanguages.length > 0) {
+            const supportedCount = statusData.modelStatus.supportedLanguages.length
+            statusText += ` (支持 ${supportedCount} 种语言)`
+          }
 
-        // 优先使用specificModel字段
-        if (statusData.modelStatus.specificModel) {
-          // 从路径中提取文件名
-          const pathParts = statusData.modelStatus.specificModel.split('/')
-          currentModelName = pathParts[pathParts.length - 1]
-        }
-        // 如果没有specificModel，则使用availableModels的第一个
-        else if (statusData.modelStatus.availableModels && statusData.modelStatus.availableModels.length > 0) {
-          currentModelName = statusData.modelStatus.availableModels[0].name || statusData.modelStatus.availableModels[0]
-        }
+          // 添加可用模型数量信息
+          if (statusData.modelStatus.availableModels && statusData.modelStatus.totalAvailable) {
+            const availableCount = statusData.modelStatus.totalAvailable
+            statusText += ` (${availableCount}个可用模型)`
+          }
 
-        if (currentModelName) {
-          statusText += ` (${currentModelName})`
+          // 添加当前模型名称
+          let currentModelName = ""
+
+          // 优先使用specificModel字段
+          if (statusData.modelStatus.specificModel) {
+            // 从路径中提取文件名
+            const pathParts = statusData.modelStatus.specificModel.split('/')
+            currentModelName = pathParts[pathParts.length - 1]
+          }
+          // 如果没有specificModel，则使用availableModels的第一个
+          else if (statusData.modelStatus.availableModels && statusData.modelStatus.availableModels.length > 0) {
+            currentModelName = statusData.modelStatus.availableModels[0].name || statusData.modelStatus.availableModels[0]
+          }
+
+          if (currentModelName) {
+            statusText += ` (${currentModelName})`
+          }
+        } else {
+          // 默认状态，使用原来的状态文本
+          statusText = `模型: ${statusData.modelStatus.statusText}`
         }
 
         modelStatusText.value = statusText
@@ -303,6 +335,19 @@ const updateApplicationStatus = async () => {
         versionInfo.value = statusData.versionInfo.fullName
       } else if (statusData.versionInfo && statusData.versionInfo.version) {
         versionInfo.value = `v${statusData.versionInfo.version}`
+      }
+
+      // 检查是否需要显示模型提醒（仅当传入checkModelNotification=true时）
+      if (checkModelNotification && statusData.modelStatus) {
+        console.log('🔍 检查模型状态:', {
+          isLoaded: statusData.modelStatus.isLoaded,
+          modelPath: statusData.modelStatus.modelPath,
+          availableModelsCount: statusData.modelStatus.availableModels?.length || 0,
+          status: statusData.modelStatus.status,
+          statusText: statusData.modelStatus.statusText
+        })
+
+        checkAndShowModelNotification(statusData.modelStatus)
       }
 
       console.log('✅ 应用状态更新成功:', {
@@ -320,11 +365,73 @@ const updateApplicationStatus = async () => {
   }
 }
 
+// 检查并显示模型提醒
+const checkAndShowModelNotification = (modelStatus) => {
+  // 检查模型加载状态
+  const isModelNotLoaded = !modelStatus.isLoaded
+  const hasNoAvailableModels = !modelStatus.availableModels || modelStatus.availableModels.length === 0
+  const hasNoModelPath = !modelStatus.modelPath || modelStatus.modelPath === ''
+  const isStatusNotConfigured = modelStatus.status === '未配置' || modelStatus.status === '未初始化'
+
+  const needsNotification = isModelNotLoaded || hasNoAvailableModels || hasNoModelPath || isStatusNotConfigured
+
+  if (needsNotification) {
+    console.log('📢 检测到模型问题，显示提醒对话框:', {
+      isModelNotLoaded,
+      hasNoAvailableModels,
+      hasNoModelPath,
+      isStatusNotConfigured,
+      currentStatus: modelStatus.status
+    })
+
+    // 延迟显示提醒，确保界面完全加载后再弹出
+    setTimeout(() => {
+      showModelNotification.value = true
+    }, 500)
+  } else {
+    console.log('✅ 模型状态正常，已成功加载模型')
+  }
+}
+
+
 // 设置保存处理
-const handleSettingsSave = () => {
+const handleSettingsSave = async () => {
   toastStore.showSuccess('设置已保存', '应用设置已更新')
-  // 设置保存后更新状态（特别是模型状态可能会改变）
-  updateApplicationStatus()
+
+  // 设置保存后更新状态并检查模型状态
+  await updateApplicationStatus(true) // 传入true来重新检查模型状态
+
+  // 检查设置后的模型状态，如果仍有问题，给出友好提示
+  if (modelStatusData.value) {
+    const isModelNotLoaded = !modelStatusData.value.isLoaded
+    const hasNoAvailableModels = !modelStatusData.value.availableModels || modelStatusData.value.availableModels.length === 0
+    const hasNoModelPath = !modelStatusData.value.modelPath || modelStatusData.value.modelPath === ''
+
+    if (isModelNotLoaded || hasNoAvailableModels || hasNoModelPath) {
+      setTimeout(() => {
+        toastStore.showWarning(
+          '模型仍然未就绪',
+          '请检查模型路径是否正确，或确认模型文件是否存在于指定目录'
+        )
+      }, 1000)
+    } else {
+      setTimeout(() => {
+        toastStore.showSuccess('配置成功', '语音识别模型已就绪，可以开始使用')
+      }, 1000)
+    }
+  }
+}
+
+// 处理从模型通知模态框打开设置
+const handleOpenSettingsFromNotification = () => {
+  showSettings.value = true
+}
+
+// 处理从模型通知模态框显示帮助
+const handleShowHelpFromNotification = () => {
+  // 打开Whisper文档链接
+  const helpUrl = 'https://github.com/ggerganov/whisper.cpp'
+  window.open(helpUrl, '_blank', 'noopener,noreferrer')
 }
 
 // 打开网站链接
@@ -490,6 +597,13 @@ const startRecognition = async () => {
       }
     }
     console.log('🎯 准备发送识别请求:', recognitionRequest)
+    console.log('🔍 当前前端设置:', {
+      modelPath: settings.modelPath,
+      specificModelFile: settings.specificModelFile,
+      recognitionLanguage: settings.recognitionLanguage
+    })
+    console.log('🔍 请求中的模型路径:', recognitionRequest.options.ModelPath)
+    console.log('🔍 请求中的特定模型:', recognitionRequest.specificModelFile)
 
     // 调用Wails API开始识别（全局事件监听器已设置，会自动处理进度更新）
     console.log('🎯 调用wailsStartRecognition，请求:', recognitionRequest)
@@ -563,6 +677,14 @@ onMounted(async () => {
     initializeSettings()
     console.log('✅ 设置初始化完成')
 
+    // 在开发环境下暴露调试函数
+    if (process.env.NODE_ENV === 'development') {
+      window.showModelNotification = () => {
+        showModelNotification.value = true
+      }
+      console.log('🐛 开发环境：暴露模型提醒显示函数 window.showModelNotification()')
+    }
+
     // 初始化Wails连接
     await initializeWails()
     console.log('✅ Wails连接初始化完成')
@@ -575,12 +697,12 @@ onMounted(async () => {
     setupBrowserDragDrop()
     console.log('✅ 浏览器拖拽支持已设置')
 
-    // 获取并应用真实的应用状态
-    await updateApplicationStatus()
+    // 获取并应用真实的应用状态，并检查模型提醒
+    await updateApplicationStatus(true) // 传入true来检查模型提醒
     console.log('✅ 应用状态更新完成')
 
     // 设置定时更新状态（每30秒更新一次）
-    setInterval(updateApplicationStatus, 30000)
+    setInterval(() => updateApplicationStatus(false), 30000) // 定时更新不需要检查模型提醒
 
     // toastStore.showSuccess('欢迎', 'Vue组件已完整迁移！v2.0.0', {
     //   duration: 2000

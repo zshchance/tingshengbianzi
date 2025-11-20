@@ -197,6 +197,17 @@ func (a *App) StartRecognition(request RecognitionRequest) RecognitionResponse {
 		}
 	}
 
+	// 🔧 重新加载最新配置（确保每次识别都使用最新设置）
+	fmt.Printf("🔄 重新加载配置文件以获取最新设置...\n")
+	latestConfig := a.configManager.LoadDefaultConfig()
+
+	// 更新内存中的配置
+	a.config = latestConfig
+	// 更新识别服务的配置
+	a.recognitionService.UpdateConfig(latestConfig)
+	fmt.Printf("✅ 已重新加载配置: 语言=%s, 模型路径=%s, 特定模型=%s\n",
+		latestConfig.Language, latestConfig.ModelPath, latestConfig.SpecificModelFile)
+
 	// 检查文件是否存在（对于拖拽文件，FileData存在时跳过路径检查）
 	if request.FileData == "" {
 		// 只有在没有Base64数据时才检查文件路径
@@ -228,6 +239,16 @@ func (a *App) StartRecognition(request RecognitionRequest) RecognitionResponse {
 			modelPath = modelDir
 			fmt.Printf("使用用户指定模型的目录: %s\n", modelPath)
 		}
+
+		if request.SpecificModelFile != "" {
+			// 从用户指定的模型文件路径中提取目录，这会覆盖其他路径设置
+			modelDir := filepath.Dir(request.SpecificModelFile)
+			modelPath = modelDir
+			fmt.Printf("使用用户指定模型的目录: %s\n", modelPath)
+		}
+
+		fmt.Printf("🔄 最终使用的模型路径: %s\n", modelPath)
+		fmt.Printf("🔄 识别语言: %s\n", language)
 
 		if err := a.recognitionService.LoadModel(language, modelPath); err != nil {
 			return RecognitionResponse{
