@@ -1,5 +1,6 @@
 import { ref, computed, watch } from 'vue'
 import { useToastStore } from '../stores/toast'
+import { GetAudioDuration } from '../../wailsjs/go/main/App'
 
 export function useAudioFile() {
   const toastStore = useToastStore()
@@ -101,9 +102,46 @@ export function useAudioFile() {
     return `${minutes}:${secs.toString().padStart(2, '0')}`
   }
 
-  // 获取音频文件时长（使用HTML5 Audio API）
-  const getAudioDuration = (file) => {
-    console.log('🎵 开始获取音频时长:', { fileName: file.name, fileSize: file.size })
+  // 获取音频文件时长（使用后端FFmpeg精确分析）
+  const getAudioDuration = async (file) => {
+    console.log('🎵 开始获取精确音频时长:', { fileName: file.name, fileSize: file.size })
+
+    try {
+      let filePath = null
+
+      // 优先使用文件的完整路径
+      if (file.path) {
+        filePath = file.path
+        console.log('📁 使用文件路径获取时长:', filePath)
+      } else {
+        // 对于拖拽文件或没有路径的文件，先保存到临时位置
+        console.log('⚠️ 文件缺少路径，尝试使用文件对象获取时长')
+        throw new Error('拖拽文件暂时不支持精确时长获取，请使用文件选择功能')
+      }
+
+      // 调用后端接口获取精确时长
+      const response = await GetAudioDuration(filePath)
+
+      if (response.success && response.duration) {
+        console.log('✅ 后端精确时长获取成功:', {
+          duration: response.duration,
+          filePath: response.filePath,
+          formatted: formatDuration(response.duration)
+        })
+        return response.duration
+      } else {
+        console.error('❌ 后端时长获取失败:', response.error)
+        throw new Error(response.error || '无法获取音频文件时长')
+      }
+    } catch (error) {
+      console.error('❌ 获取音频时长失败:', error)
+      throw new Error(`获取音频时长失败: ${error.message}`)
+    }
+  }
+
+  // 备用方法：使用HTML5 Audio API获取时长（当后端接口失败时使用）
+  const getAudioDurationFallback = (file) => {
+    console.log('🔄 使用备用方法获取音频时长:', { fileName: file.name })
     return new Promise((resolve, reject) => {
       try {
         const audio = new Audio()
@@ -118,14 +156,14 @@ export function useAudioFile() {
 
         audio.addEventListener('loadedmetadata', () => {
           clearTimeout(timeoutId)
-          console.log('✅ 音频元数据加载成功:', { duration: audio.duration })
+          console.log('✅ 备用方法音频元数据加载成功:', { duration: audio.duration })
           URL.revokeObjectURL(url)
           resolve(audio.duration)
         })
 
         audio.addEventListener('error', (error) => {
           clearTimeout(timeoutId)
-          console.error('❌ 音频加载错误:', error)
+          console.error('❌ 备用方法音频加载错误:', error)
           URL.revokeObjectURL(url)
           reject(new Error('无法读取音频文件元数据'))
         })
@@ -133,7 +171,7 @@ export function useAudioFile() {
         audio.src = url
         console.log('🎯 设置音频源，开始加载...')
       } catch (error) {
-        console.error('❌ 音频处理异常:', error)
+        console.error('❌ 备用方法音频处理异常:', error)
         reject(new Error('音频处理失败'))
       }
     })
@@ -159,8 +197,30 @@ export function useAudioFile() {
 
       // 获取音频时长
       console.log('⏱️ 开始获取音频时长...')
-      const duration = await getAudioDuration(file)
-      console.log('✅ 音频时长获取成功:', { duration, formatted: formatDuration(duration) })
+      let duration = null
+
+      try {
+        // 优先使用后端精确时长获取
+        duration = await getAudioDuration(file)
+        console.log('✅ 使用后端接口获取时长成功:', { duration, formatted: formatDuration(duration) })
+      } catch (backendError) {
+        console.warn('⚠️ 后端接口获取时长失败，使用备用方法:', backendError.message)
+
+        try {
+          // 使用备用方法（HTML5 Audio API）
+          duration = await getAudioDurationFallback(file)
+          console.log('✅ 备用方法获取时长成功:', { duration, formatted: formatDuration(duration) })
+
+          // 显示友好的提示信息
+          toastStore.showWarning(
+            '使用估算时长',
+            `由于文件路径问题，"${file.name}" 的时长为估算值，可能不精确`
+          )
+        } catch (fallbackError) {
+          console.error('❌ 备用方法也失败:', fallbackError.message)
+          throw new Error(`无法获取音频时长: 后端接口失败(${backendError.message})，备用方法也失败(${fallbackError.message})`)
+        }
+      }
 
       // 保存文件信息，保留拖拽标记
       const fileInfo = {
@@ -168,7 +228,8 @@ export function useAudioFile() {
         duration,
         durationFormatted: formatDuration(duration),
         selectedAt: new Date(),
-        isDragged: file.isDragged || (!file.path && file instanceof File)
+        isDragged: file.isDragged || (!file.path && file instanceof File),
+        durationSource: file.path ? 'backend' : 'frontend' // 记录时长来源
       }
 
       console.log('💾 准备保存文件信息:', fileInfo)
@@ -294,6 +355,7 @@ export function useAudioFile() {
     handleDragLeave,
     handleDrop,
     getAudioDuration,
+    getAudioDurationFallback,
     formatDuration,
 
     // 配置
