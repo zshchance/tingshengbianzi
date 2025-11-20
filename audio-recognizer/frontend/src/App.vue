@@ -284,7 +284,19 @@ const handleFileSelect = async (file) => {
     showResults.value = false
     recognitionResult.value = null
   }
-  return await processFileSelect(file, audioFile, clearResults)
+
+  const result = await processFileSelect(file, audioFile, clearResults)
+
+  // 如果文件选择成功，检查模型状态
+  if (result) {
+    console.log('📁 文件选择成功，检查模型状态')
+    const modelStatusOk = await checkModelStatusAndShowReminder()
+    if (!modelStatusOk) {
+      console.log('❌ 模型状态不满足，已显示提醒模态框')
+    }
+  }
+
+  return result
 }
 
 const handleOpenFileDialog = async () => {
@@ -527,6 +539,97 @@ const simulateAIOptimization = async (text) => {
 }
 
 
+// 实时检查模型状态（不依赖缓存数据）
+const checkModelStatusRealtime = async () => {
+  console.log('🔍 实时检查模型状态...')
+
+  try {
+    const statusResult = await getApplicationStatus()
+    if (!statusResult || !statusResult.success || !statusResult.status) {
+      console.log('❌ 无法获取应用状态，显示提醒模态框')
+      showModelNotification.value = true
+      return false
+    }
+
+    const statusData = statusResult.status
+    if (!statusData.modelStatus) {
+      console.log('❌ 模型状态数据不可用，显示提醒模态框')
+      showModelNotification.value = true
+      return false
+    }
+
+    const { isLoaded, modelPath, availableModels } = statusData.modelStatus
+
+    // 检查模型是否未加载
+    if (!isLoaded) {
+      console.log('❌ 模型未加载，显示提醒模态框')
+      showModelNotification.value = true
+      return false
+    }
+
+    // 检查是否有可用模型
+    if (!availableModels || availableModels.length === 0) {
+      console.log('❌ 没有可用模型，显示提醒模态框')
+      showModelNotification.value = true
+      return false
+    }
+
+    // 检查模型路径是否配置
+    if (!modelPath || modelPath === '') {
+      console.log('❌ 模型路径未配置，显示提醒模态框')
+      showModelNotification.value = true
+      return false
+    }
+
+    console.log('✅ 模型状态正常，可以继续')
+    return true
+
+  } catch (error) {
+    console.error('❌ 实时模型状态检查失败:', error)
+    console.log('❌ 检查过程出错，显示提醒模态框')
+    showModelNotification.value = true
+    return false
+  }
+}
+
+// 检查模型状态并显示提醒（优化版）
+const checkModelStatusAndShowReminder = async () => {
+  console.log('🔍 检查模型状态:', modelStatusData.value)
+
+  // 首先尝试使用缓存数据检查
+  if (modelStatusData.value) {
+    const { isLoaded, modelPath, availableModels } = modelStatusData.value
+
+    // 检查模型是否未加载
+    if (!isLoaded) {
+      console.log('❌ 模型未加载（缓存数据），显示提醒模态框')
+      showModelNotification.value = true
+      return false
+    }
+
+    // 检查是否有可用模型
+    if (!availableModels || availableModels.length === 0) {
+      console.log('❌ 没有可用模型（缓存数据），显示提醒模态框')
+      showModelNotification.value = true
+      return false
+    }
+
+    // 检查模型路径是否配置
+    if (!modelPath || modelPath === '') {
+      console.log('❌ 模型路径未配置（缓存数据），显示提醒模态框')
+      showModelNotification.value = true
+      return false
+    }
+
+    console.log('✅ 模型状态正常（缓存数据），可以继续')
+    return true
+  }
+
+  // 如果没有缓存数据，进行实时检查
+  console.log('⚠️ 无缓存模型状态数据，进行实时检查')
+  return await checkModelStatusRealtime()
+}
+
 // 开始语音识别
 const startRecognition = async () => {
   console.log('🎤 开始识别按钮被点击')
@@ -540,6 +643,13 @@ const startRecognition = async () => {
   if (!hasFile || !currentFile.value) {
     console.log('❌ 识别条件不满足: 没有文件')
     toastStore.showError('无法开始识别', '请先选择音频文件')
+    return
+  }
+
+  // 检查模型状态
+  const modelStatusOk = await checkModelStatusAndShowReminder()
+  if (!modelStatusOk) {
+    console.log('❌ 模型状态不满足，显示提醒模态框')
     return
   }
 
