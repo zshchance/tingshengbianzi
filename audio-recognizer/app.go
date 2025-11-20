@@ -1352,63 +1352,12 @@ func (a *App) OnFileDrop(files []string) {
 		return
 	}
 
-	// 只处理第一个文件
+	// 使用工具函数验证文件
 	filePath := files[0]
-	fmt.Printf("📁 OnFileDrop: 处理文件: %s\n", filePath)
+	validationResult := utils.ValidateAudioFile(filePath)
 
-	// 检查文件是否为音频格式
-	ext := strings.ToLower(filepath.Ext(filePath))
-	audioFormats := map[string]bool{
-		".mp3":  true,
-		".wav":  true,
-		".m4a":  true,
-		".aac":  true,
-		".ogg":  true,
-		".flac": true,
-	}
-
-	if !audioFormats[ext] {
-		fmt.Printf("❌ OnFileDrop: 不支持的音频格式: %s\n", ext)
-		runtime.EventsEmit(a.ctx, "file-drop-error", map[string]interface{}{
-			"error":   "不支持的音频格式",
-			"message": "请选择 MP3、WAV、M4A、AAC、OGG 或 FLAC 格式的音频文件",
-			"file":    filePath,
-		})
-		return
-	}
-
-	// 检查文件是否存在
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		fmt.Printf("❌ OnFileDrop: 文件不存在: %s\n", filePath)
-		runtime.EventsEmit(a.ctx, "file-drop-error", map[string]interface{}{
-			"error":   "文件不存在",
-			"message": "拖拽的文件不存在或无法访问",
-			"file":    filePath,
-		})
-		return
-	}
-
-	// 获取文件信息
-	fileInfo, err := os.Stat(filePath)
-	if err != nil {
-		fmt.Printf("❌ OnFileDrop: 无法获取文件信息: %v\n", err)
-		runtime.EventsEmit(a.ctx, "file-drop-error", map[string]interface{}{
-			"error":   "无法获取文件信息",
-			"message": err.Error(),
-			"file":    filePath,
-		})
-		return
-	}
-
-	// 限制文件大小 (100MB)
-	const maxFileSize = 100 * 1024 * 1024
-	if fileInfo.Size() > maxFileSize {
-		fmt.Printf("❌ OnFileDrop: 文件过大: %d bytes\n", fileInfo.Size())
-		runtime.EventsEmit(a.ctx, "file-drop-error", map[string]interface{}{
-			"error":   "文件过大",
-			"message": "文件大小不能超过 100MB",
-			"file":    filePath,
-		})
+	if !validationResult.IsValid {
+		a.sendFileDropError(filePath, validationResult.ErrorMsg)
 		return
 	}
 
@@ -1420,9 +1369,9 @@ func (a *App) OnFileDrop(files []string) {
 		"file": map[string]interface{}{
 			"name":         filepath.Base(filePath),
 			"path":         filePath,
-			"size":         fileInfo.Size(),
-			"sizeFormatted": formatFileSize(fileInfo.Size()),
-			"extension":    ext,
+			"size":         validationResult.FileInfo.Size(),
+			"sizeFormatted": validationResult.SizeStr,
+			"extension":    validationResult.Extension,
 			"hasPath":      true,
 		},
 	}
@@ -1431,18 +1380,15 @@ func (a *App) OnFileDrop(files []string) {
 	fmt.Printf("📤 OnFileDrop: 已发送文件拖放事件到前端\n")
 }
 
-// formatFileSize 格式化文件大小
-func formatFileSize(size int64) string {
-	const unit = 1024
-	if size < unit {
-		return fmt.Sprintf("%d B", size)
-	}
-	div, exp := int64(unit), 0
-	for n := size / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(size)/float64(div), "KMGTPE"[exp])
+
+// sendFileDropError 发送文件拖放错误事件
+func (a *App) sendFileDropError(filePath, errorMsg string) {
+	fmt.Printf("❌ OnFileDrop: 文件验证失败: %s\n", errorMsg)
+	runtime.EventsEmit(a.ctx, "file-drop-error", map[string]interface{}{
+		"error":   "文件验证失败",
+		"message": errorMsg,
+		"file":    filePath,
+	})
 }
 
 // createTempFileFromBase64 从Base64数据创建临时文件
