@@ -170,28 +170,17 @@ import { useToastStore } from './stores/toast'
 import { useAudioFile } from './composables/useAudioFile'
 import { useWails } from './composables/useWails'
 import { useSettings } from './composables/useSettings'
-import { generateFineGrainedTimestampedText, formatTimestamp } from './utils/timeFormatter'
-import { generateFineGrainedTimestampedText as generateEnhancedTimestamps, optimizeSpeedAnalysis, intelligentDeduplication } from './utils/fineGrainedTimestamps'
-import { generateAIOptimizationPrompt, preprocessText, generateTextQualityReport } from './utils/aiOptimizer'
-// 导入新的工具函数
+import { useRecognitionEvents } from './composables/useRecognitionEvents'
+import { useFileProcessing } from './composables/useFileProcessing'
+import { formatTimestamp } from './utils/timeFormatter'
 import {
-  fileToBase64,
-  formatFileSize,
-  formatTime,
-  formatDuration,
-  estimateDurationFromSize,
-  getBrowserAudioDuration,
-  isSupportedAudioFile,
-  getFileTypeDescription,
-  createFileInfo
+  fileToBase64
 } from './utils/audioFileUtils'
 import {
-  DEDUPLICATION_CONFIG,
   APP_INFO,
   TECH_STACK
 } from './constants/recognitionConstants'
 // 日志功能已移除 - 使用浏览器控制台进行调试
-import { EventsOn } from '../wailsjs/runtime/runtime.js'
 import ToastContainer from './components/ToastContainer.vue'
 import ProgressBar from './components/ProgressBar.vue'
 import FileDropZone from './components/FileDropZone.vue'
@@ -257,6 +246,48 @@ const progressData = reactive({
   totalTime: 0,
   showDetails: true
 })
+
+// 使用新的业务逻辑模块
+const {
+  setupGlobalWailsEvents
+} = useRecognitionEvents({
+  isProcessing,
+  progressData,
+  recognitionResult,
+  showResults,
+  settings,
+  toastStore
+})
+
+const {
+  setupBrowserDragDrop,
+  processFileSelect,
+  handleOpenFileDialog: openFileDlg,
+  handleFileError
+} = useFileProcessing({
+  selectFile,
+  currentFile,
+  getAudioDuration,
+  wailsSelectAudioFile,
+  toastStore
+})
+
+// 桥接函数，用于模板中的事件处理
+const handleFileSelect = async (file) => {
+  const clearResults = () => {
+    showResults.value = false
+    recognitionResult.value = null
+  }
+  return await processFileSelect(file, audioFile, clearResults)
+}
+
+const handleOpenFileDialog = async () => {
+  const clearResults = () => {
+    showResults.value = false
+    recognitionResult.value = null
+  }
+  return await openFileDlg(audioFile, clearResults)
+}
 
 // 定时器
 let progressTimer = null
@@ -481,314 +512,6 @@ const stopRecognition = async () => {
   }
 }
 
-
-// 浏览器级别拖拽支持 - 作为备用方案
-const setupBrowserDragDrop = () => {
-  console.log('🎯 设置浏览器级别拖拽支持')
-
-  // 添加全局拖拽事件监听器
-  document.addEventListener('dragover', (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    console.log('🔄 检测到拖拽悬停事件')
-  })
-
-  document.addEventListener('drop', async (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    console.log('🔄 检测到文件拖放事件')
-
-    const files = e.dataTransfer.files
-    if (files.length > 0) {
-      const file = files[0]
-      console.log('📁 浏览器拖拽文件:', {
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        path: file.path || file.webkitRelativePath || file.name,
-        hasPath: !!file.path
-      })
-
-      // 检查是否为音频文件
-      const isAudio = isSupportedAudioFile(file)
-
-      if (isAudio) {
-        console.log('✅ 确认为音频文件，开始处理拖拽文件')
-
-        // 创建一个模拟的文件对象来处理拖拽的文件
-        const dragFile = {
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          lastModified: file.lastModified,
-          // 对于拖拽文件，我们将使用文件内容而不是路径
-          isDragged: true,
-          file: file // 保存原始File对象
-        }
-
-        try {
-          // 处理拖拽的文件（不依赖于文件路径）
-          console.log('📁 处理拖拽的音频文件:', dragFile.name)
-
-          // 使用 useAudioFile composable 的 selectFile 方法来处理拖拽文件
-          await selectFile(file)
-
-          toastStore.showSuccess('文件拖拽成功', `已加载音频文件: ${dragFile.name}`)
-
-        } catch (error) {
-          console.error('❌ 处理拖拽文件时出错:', error)
-          toastStore.showError('文件处理失败', `处理文件 ${dragFile.name} 时出错: ${error.message}`)
-        }
-      } else {
-        console.log('❌ 不是音频文件')
-        toastStore.addToast({
-          type: 'error',
-          title: '文件格式错误',
-          message: '请选择 MP3、WAV、M4A、AAC、OGG 或 FLAC 格式的音频文件'
-        })
-      }
-    } else {
-      console.log('❌ 没有检测到文件')
-    }
-  })
-
-  console.log('✅ 浏览器拖拽事件监听器已设置')
-}
-
-// 处理拖拽文件（基于老版本EventHandler.js的processAudioFile）
-const processDroppedFile = async (file) => {
-  console.log('🔄 开始处理拖拽文件:', file.name)
-
-  try {
-    // 创建文件信息对象（参考老版本的AudioFileProcessor.processAudioFile）
-    const fileInfo = {
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      path: file.path || file.webkitRelativePath || file.name, // 关键：使用完整路径
-      lastModified: file.lastModified,
-      duration: 0,
-      hasPath: !!file.path
-    }
-
-    fileInfo.formattedSize = formatFileSize(file.size)
-
-    // 获取文件类型描述
-    const extension = file.name.split('.').pop()?.toLowerCase()
-    const typeMap = {
-      'mp3': 'MP3音频',
-      'wav': 'WAV音频',
-      'm4a': 'M4A音频',
-      'aac': 'AAC音频',
-      'ogg': 'OGG音频',
-      'flac': 'FLAC音频'
-    }
-    fileInfo.formattedType = typeMap[extension] || '音频文件'
-
-    // 尝试获取音频时长
-    try {
-      const duration = await getBrowserAudioDuration(file)
-      fileInfo.duration = duration
-      fileInfo.formattedDuration = formatDuration(duration)
-    } catch (error) {
-      console.warn('获取音频时长失败:', error)
-      // 使用文件大小估算时长（参考老版本的逻辑）
-      const estimatedDuration = estimateDurationFromSize(file.size, file.name)
-      fileInfo.duration = estimatedDuration
-      fileInfo.formattedDuration = formatDuration(estimatedDuration)
-    }
-
-    console.log('✅ 拖拽文件处理完成:', fileInfo)
-
-    // 更新应用状态
-    audioFile.file = fileInfo
-    audioFile.fileName = fileInfo.name
-    audioFile.filePath = fileInfo.path
-    audioFile.fileType = fileInfo.type
-    audioFile.fileSize = fileInfo.size
-    audioFile.duration = fileInfo.duration
-    audioFile.fileSizeFormatted = fileInfo.formattedSize
-
-    console.log('🎯 音频文件状态已更新:', {
-      fileName: audioFile.fileName,
-      filePath: audioFile.filePath,
-      duration: audioFile.duration,
-      hasPath: fileInfo.hasPath
-    })
-
-    toastStore.addToast({
-      type: 'success',
-      title: '文件已加载',
-      message: `已加载文件: ${file.name}`
-    })
-
-  } catch (error) {
-    console.error('❌ 拖拽文件处理失败:', error)
-    toastStore.addToast({
-      type: 'error',
-      title: '文件处理失败',
-      message: error.message
-    })
-  }
-}
-
-
-
-
-// 处理文件选择（包括拖拽和按钮选择）
-const handleFileSelect = async (file) => {
-  console.log('📁 处理选择的文件:', file.name, file instanceof File ? '(文件对象)' : '(Wails文件对象)')
-  console.log('📁 文件路径信息:', {
-    path: file.path,
-    webkitRelativePath: file.webkitRelativePath,
-    name: file.name
-  })
-
-  try {
-    // 清空之前的识别结果和显示状态
-    console.log('🧹 清空之前的识别结果')
-    showResults.value = false
-    recognitionResult.value = null
-
-    toastStore.showInfo('处理文件', `正在处理文件 "${file.name}"...`)
-
-    // 创建文件信息对象，标记是否为拖拽文件
-    currentFile.value = {
-      hasFile: true,
-      fileName: file.name,
-      file: file,
-      duration: null,
-      durationFormatted: '计算中...',
-      selectedAt: new Date(),
-      size: file.size,
-      type: file.type,
-      isDragged: !file.path && file instanceof File // 如果没有path属性且是File对象，则为拖拽文件
-    }
-
-    // 获取文件路径（在Wails中，拖拽文件有file.path属性）
-    const filePath = file.path || file.webkitRelativePath || file.name
-    console.log('📁 最终使用的文件路径:', filePath)
-
-    // 格式化文件大小
-    const sizeFormatted = formatFileSize(file.size)
-
-    // 立即从后端获取准确的音频时长
-    try {
-      console.log('🎵 开始从后端获取音频文件时长:', filePath)
-      const durationResult = await getAudioDuration(filePath)
-
-      if (durationResult && durationResult.success && durationResult.duration > 0) {
-        const accurateDuration = durationResult.duration
-        console.log('🎵 后端音频时长获取成功:', accurateDuration, '秒')
-
-        currentFile.value.duration = accurateDuration
-        currentFile.value.durationFormatted = formatTime(accurateDuration)
-        console.log('🎵 文件时长已更新:', currentFile.value.durationFormatted)
-      } else {
-        console.warn('⚠️ 后端获取时长失败，使用估算:', durationResult?.error)
-        // 备选方案：使用估算时长
-        const estimatedDuration = estimateDurationFromSize(file.size, file.name)
-        currentFile.value.duration = estimatedDuration
-        currentFile.value.durationFormatted = formatTime(estimatedDuration)
-      }
-    } catch (durationError) {
-      console.warn('⚠️ 获取音频时长异常，使用估算:', durationError.message)
-      // 备选方案：使用估算时长
-      const estimatedDuration = estimateDurationFromSize(file.size, file.name)
-      currentFile.value.duration = estimatedDuration
-      currentFile.value.durationFormatted = formatTime(estimatedDuration)
-    }
-
-    // 更新文件信息
-    audioFile.fileInfo.value = {
-      name: file.name,
-      size: file.size,
-      sizeFormatted: sizeFormatted,
-      extension: file.name.split('.').pop().toUpperCase(),
-      type: file.type,
-      path: filePath // 添加路径信息
-    }
-
-    toastStore.showSuccess('文件选择成功', `"${file.name}" 已准备就绪`)
-
-  } catch (error) {
-    console.error('❌ 处理文件失败:', error)
-    toastStore.showError('文件处理失败', `无法处理文件: ${error.message}`)
-  }
-}
-
-// 处理文件错误
-const handleFileError = (errorMessage) => {
-  console.error('❌ 文件错误:', errorMessage)
-  toastStore.showError('文件错误', errorMessage)
-}
-
-
-
-
-
-
-// 处理文件选择对话框
-const handleOpenFileDialog = async () => {
-  console.log('🗂️ 处理文件选择对话框')
-  try {
-    const result = await wailsSelectAudioFile()
-    console.log('🗂️ 文件选择结果:', result)
-
-    if (result && result.success && result.file) {
-      // 使用Wails选择的文件信息
-      currentFile.value = {
-        hasFile: true,
-        fileName: result.file.name,
-        file: result.file,  // 保持完整的文件对象，包含path属性
-        duration: null,
-        durationFormatted: '计算中...',
-        selectedAt: new Date()
-      }
-      console.log('✅ 文件选择成功:', currentFile.value)
-      console.log('📁 Wails文件路径检查:', {
-        name: result.file.name,
-        path: result.file.path,
-        hasPath: !!result.file.path
-      })
-
-      // 立即从后端获取准确的音频时长
-      try {
-        console.log('🎵 开始从后端获取音频文件时长:', result.file.path)
-        const durationResult = await getAudioDuration(result.file.path)
-
-        if (durationResult && durationResult.success && durationResult.duration > 0) {
-          const accurateDuration = durationResult.duration
-          console.log('🎵 后端音频时长获取成功:', accurateDuration, '秒')
-
-          currentFile.value.duration = accurateDuration
-          currentFile.value.durationFormatted = formatTime(accurateDuration)
-          console.log('🎵 文件时长已更新:', currentFile.value.durationFormatted)
-        } else {
-          console.warn('⚠️ 后端获取时长失败，使用估算:', durationResult?.error)
-          // 备选方案：使用估算时长
-          const estimatedDuration = estimateDurationFromSize(result.file.size, result.file.name)
-          currentFile.value.duration = estimatedDuration
-          currentFile.value.durationFormatted = formatTime(estimatedDuration)
-        }
-      } catch (durationError) {
-        console.warn('⚠️ 获取音频时长异常，使用估算:', durationError.message)
-        // 备选方案：使用估算时长
-        const estimatedDuration = estimateDurationFromSize(result.file.size, result.file.name)
-        currentFile.value.duration = estimatedDuration
-        currentFile.value.durationFormatted = formatTime(estimatedDuration)
-      }
-
-      toastStore.showSuccess('文件选择成功', `"${result.file.name}" 已准备就绪`)
-    } else {
-      console.log('🚫 用户取消文件选择')
-    }
-  } catch (error) {
-    console.error('❌ 文件选择失败:', error)
-    toastStore.showError('文件选择失败', error.message)
-  }
-}
-
 // 重置应用
 const resetApplication = () => {
   clearFile()
@@ -805,266 +528,6 @@ const resetApplication = () => {
   toastStore.showInfo('应用已重置', '可以重新开始')
 }
 
-// 设置全局Wails事件监听器（参照原始EventHandler.js）
-const setupGlobalWailsEvents = () => {
-  console.log('🎯 设置全局Wails事件监听器')
-
-  // 识别进度事件
-  EventsOn('recognition_progress', (progress) => {
-    console.log('🎯 全局进度事件:', progress)
-    if (isProcessing.value) {
-      progressData.progress = progress.percentage || 0
-      progressData.status = progress.status || '正在处理中...'
-      if (progress.currentTime) {
-        progressData.currentTime = progress.currentTime
-      }
-    }
-  })
-
-  // 识别结果事件
-  EventsOn('recognition_result', (result) => {
-    console.log('🎯 全局结果事件:', result)
-    // 可以在这里处理实时识别结果
-  })
-
-  // 识别错误事件
-  EventsOn('recognition_error', (error) => {
-    console.log('🎯 全局错误事件:', error)
-    isProcessing.value = false
-    toastStore.showError('识别错误', error.message || '语音识别过程中发生错误')
-  })
-
-  // 识别完成事件
-  EventsOn('recognition_complete', async (response) => {
-    console.log('🎯 全局完成事件:', response)
-    isProcessing.value = false
-
-    // 记录完整的Whisper原始响应数据
-    const completeWhisperResponse = {
-      success: response.success,
-      error: response.error,
-      result: response.result ? {
-        text: response.result.text,
-        textLength: response.result.text ? response.result.text.length : 0,
-        segments: response.result.segments,
-        segmentCount: response.result.segments ? response.result.segments.length : 0,
-        words: response.result.words,
-        wordCount: response.result.words ? response.result.words.length : 0,
-        duration: response.result.duration,
-        language: response.result.language,
-        // 记录所有可能的Whisper返回字段
-        info: response.result.info,
-        model: response.result.model,
-        timestampedText: response.result.timestampedText,
-        timestampedTextLength: response.result.timestampedText ? response.result.timestampedText.length : 0
-      } : null,
-      processingTime: response.processingTime,
-      timestamp: new Date().toISOString()
-    }
-
-    // 记录完整的Whisper响应到控制台
-    console.log('📊 Whisper完整响应:', completeWhisperResponse)
-
-    // 记录原始识别响应（保持兼容性）
-    console.log('📋 原始识别响应:', response)
-
-    if (response.result && response.success) {
-      // 🔧 智能去重处理 - 针对长音频重复识别问题
-      if (response.result.segments && response.result.segments.length > 0) {
-        const originalSegmentsCount = response.result.segments.length
-
-        // 应用智能去重算法
-        const deduplicatedSegments = intelligentDeduplication(response.result.segments, DEDUPLICATION_CONFIG)
-
-        // 替换原始segments为去重后的结果
-        response.result.segments = deduplicatedSegments
-
-        console.log(`🧠 智能去重完成: ${originalSegmentsCount} → ${deduplicatedSegments.length} (去除 ${originalSegmentsCount - deduplicatedSegments.length} 个重复片段)`)
-      }
-
-      // 修复：从去重后的segments生成text字段
-      if (!response.result.text && response.result.segments && response.result.segments.length > 0) {
-        response.result.text = response.result.segments
-          .map(segment => segment.text)
-          .filter(text => text && text.trim())
-          .join(' ')
-      }
-
-      // 生成带细颗粒度时间戳的文本（使用新的时间插值算法）
-      if (response.result.segments) {
-        console.log('🎯 开始生成细颗粒度时间戳，segments:', response.result.segments.length, '个')
-
-        // 优化语速分析
-        const totalDuration = response.result.duration ||
-          (response.result.segments[response.result.segments.length - 1]?.end || 0)
-        const language = response.result.language || 'zh-CN'
-
-        console.log('🔊 语速分析参数:', {
-          totalDuration,
-          language,
-          segmentsCount: response.result.segments.length
-        })
-
-        // 后端返回的数据分析：
-        // - result.text: 可能不完整的时间戳文本
-        // - result.segments: 完整的segments数组（与字幕模式相同）
-        // - result.timestampedText: 通常与result.text相同
-        console.log('🔧 后端segments数量:', response.result.segments?.length || 0)
-        console.log('🔧 后端result.text长度:', response.result.text?.length || 0)
-        console.log('🔧 后端result.timestampedText长度:', response.result.timestampedText?.length || 0)
-        console.log('🔧 segments预览:', JSON.stringify(response.result.segments?.slice(0, 2) || []))
-
-        // 基于segments重建完整的时间戳文本（确保覆盖所有内容）
-        let completeTimestampedText = ''
-        if (response.result.segments && response.result.segments.length > 0) {
-          const lines = response.result.segments.map((segment, index) => {
-            const startTime = formatTimestamp(segment.start)
-            const text = segment.text || ''
-            return `${startTime} ${text}`
-          })
-          completeTimestampedText = lines.join('\n')
-        }
-
-        console.log('🔧 基于segments重建的完整时间戳文本长度:', completeTimestampedText.length)
-        console.log('🔧 重建的文本预览:', completeTimestampedText.substring(0, 300))
-
-        // 保存完整的时间戳文本供原始结果标签页使用
-        response.result.originalTimestampedText = completeTimestampedText
-
-        // 使用细颗粒度时间标记组件生成更精确的时间戳（这是前端细化处理）
-        response.result.timestampedText = generateEnhancedTimestamps(
-          response.result.segments,
-          {
-            minSegmentLength: 6,  // 最小片段长度
-            maxSegmentLength: 15, // 最大片段长度
-            averageSpeed: optimizeSpeedAnalysis(
-              response.result.segments.map(s => s.text).join(' '),
-              totalDuration,
-              language
-            )
-          }
-        )
-
-        console.log('🔧 前端细颗粒度时间戳文本长度:', response.result.timestampedText.length)
-        console.log('🔧 细颗粒度时间戳文本预览:', response.result.timestampedText.substring(0, 300))
-
-        console.log('✅ 细颗粒度时间戳生成完成:', {
-          timestampedTextLength: response.result.timestampedText?.length || 0,
-          hasTimestampedText: !!response.result.timestampedText,
-          preview: response.result.timestampedText?.substring(0, 100) || '无内容'
-        })
-
-        // 记录细颗粒度处理过程到控制台
-        console.log('⏱️ 细颗粒度处理完成:', {
-          segmentCount: response.result.segments.length,
-          totalDuration,
-          language,
-          preview: response.result.timestampedText?.substring(0, 100)
-        })
-      } else {
-        console.warn('⚠️ 没有segments数据，无法生成细颗粒度时间戳')
-      }
-
-      // 生成AI优化结果（前端模板系统）
-      if (response.result.timestampedText) {
-        console.log('🤖 开始生成AI优化结果（前端模板系统）')
-
-        try {
-          const templateKey = settings.aiTemplate || 'basic'
-          console.log('🔧 使用AI模板类型:', templateKey)
-
-          // 使用前端生成AI优化提示词
-          const aiResult = await generateAIPrompt(templateKey, response.result)
-          console.log('🔧 AI优化提示词生成完成，长度:', aiResult.prompt.length)
-
-          if (aiResult.success) {
-            response.result.aiOptimizationPrompt = aiResult.prompt
-            console.log('✅ AI优化提示词生成完成')
-          } else {
-            throw new Error('AI优化提示词生成失败')
-          }
-        } catch (error) {
-          console.error('❌ AI优化处理失败:', error)
-          response.result.aiOptimizationPrompt = 'AI优化提示词生成失败: ' + error.message
-        }
-      } else {
-        console.warn('⚠️ 没有时间戳文本，无法生成AI优化结果')
-        response.result.aiOptimizationPrompt = '请先生成时间戳文本，然后才能进行AI优化。'
-      }
-
-      recognitionResult.value = response.result
-      showResults.value = true
-      progressData.progress = 100
-      progressData.status = '识别完成！'
-
-      // 时长已在文件选择时从后端获取，这里不需要再处理
-
-      console.log('✅ 识别结果设置完成 - ResultDisplay 组件将显示:', {
-        hasRecognitionResult: !!recognitionResult.value,
-        showResults: showResults.value,
-        textLength: response.result.text?.length || 0,
-        segmentCount: response.result.segments?.length || 0,
-        conditionMet: showResults.value && !!recognitionResult.value
-      })
-
-      toastStore.showSuccess('识别完成', '音频识别已成功完成')
-
-      // 记录识别完成到控制台
-      console.log('🎉 识别完成:', {
-        textLength: response.result.text?.length || 0,
-        segmentCount: response.result.segments?.length || 0,
-        duration: response.result.duration,
-        language: response.result.language
-      })
-
-      // 2秒后隐藏进度条
-      setTimeout(() => {
-        progressData.visible = false
-      }, 2000)
-    } else {
-      toastStore.showError('识别失败', response.error?.message || '语音识别失败')
-      progressData.visible = false
-    }
-  })
-
-  
-  // Wails原生文件拖放事件监听
-  EventsOn('file-dropped', (data) => {
-    console.log('🎯 Wails原生文件拖放事件:', data)
-
-    if (data.success && data.file) {
-      const fileData = data.file
-      console.log('✅ 收到Wails原生拖放文件:', fileData)
-
-      // 创建模拟的File对象用于处理
-      const mockFile = {
-        name: fileData.name,
-        path: fileData.path,
-        size: fileData.size,
-        type: `audio/${fileData.extension.replace('.', '')}`,
-        hasPath: fileData.hasPath,
-        webkitRelativePath: '',
-        lastModified: Date.now()
-      }
-
-      console.log('🎯 准备处理Wails原生拖放文件:', mockFile)
-
-      // 直接处理文件，因为已经有完整路径
-      handleFileSelect(mockFile)
-    } else {
-      console.error('❌ Wails原生文件拖放数据无效:', data)
-      toastStore.showError('文件拖放失败', '拖放的文件数据无效')
-    }
-  })
-
-  // Wails原生文件拖放错误事件监听
-  EventsOn('file-drop-error', (errorData) => {
-    console.log('❌ Wails原生文件拖放错误:', errorData)
-    toastStore.showError('文件拖放错误', errorData.message || errorData.error)
-  })
-
-  console.log('✅ 全局Wails事件监听器设置完成')
-}
 
 // 组件挂载
 onMounted(async () => {
