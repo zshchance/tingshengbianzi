@@ -299,20 +299,33 @@ func (s *AppStatusService) getAvailableModels(modelPath string) []map[string]int
 
 // getVersionInfo 获取版本信息
 func (s *AppStatusService) getVersionInfo() map[string]interface{} {
-	// 基础版本信息
-	version := "2.1.0"
-	buildDate := "2024-11-20"
-	buildInfo := "Wails v2"
+	// 使用配置服务获取版本信息
+	configService := NewConfigService()
 
-	// 尝试从构建时变量获取信息（如果有的话）
-	// 这里可以扩展为从编译时注入的变量读取版本信息
+	var version, appName, fullName string
+	var buildDate, buildInfo string
+
+	if configService != nil && (configService.IsConfigLoaded() || configService.LoadConfig() == nil) {
+		version = configService.GetVersion()
+		appName = configService.GetAppName()
+		fullName = configService.GetFullName()
+	} else {
+		// 如果配置加载失败，使用默认值
+		version = "2.1.0"
+		appName = "听声辨字"
+		fullName = fmt.Sprintf("%s v%s", appName, version)
+	}
+
+	// 构建信息仍然使用硬编码（这些信息通常在构建时确定）
+	buildDate = "2024-11-20"
+	buildInfo = "Wails v2"
 
 	return map[string]interface{}{
 		"version":     version,
 		"buildDate":   buildDate,
 		"buildInfo":   buildInfo,
-		"appName":     "听声辨字",
-		"fullName":    fmt.Sprintf("听声辨字 v%s", version),
+		"appName":     appName,
+		"fullName":    fullName,
 	}
 }
 

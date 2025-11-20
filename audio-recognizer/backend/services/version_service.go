@@ -17,6 +17,7 @@ type VersionService struct {
 	goVersion   string
 	buildOS     string
 	buildArch   string
+	configService *ConfigService
 }
 
 // VersionInfo 版本信息结构
@@ -37,16 +38,34 @@ type VersionInfo struct {
 
 // NewVersionService 创建版本信息服务
 func NewVersionService() *VersionService {
+	configService := NewConfigService()
+
+	// 尝试从配置文件读取版本信息
+	var version, appName string
+	if configService != nil {
+		version = configService.GetVersion()
+		appName = configService.GetAppName()
+	}
+
+	// 如果读取失败，使用默认值
+	if version == "" || version == "unknown" {
+		version = "2.1.0"
+	}
+	if appName == "" || appName == "unknown" {
+		appName = "听声辨字"
+	}
+
 	return &VersionService{
-		version:   "2.1.0",
-		buildDate: time.Now().Format("2006-01-02"),
-		buildInfo: "Wails v2",
-		appName:   "听声辨字",
-		goVersion: runtime.Version(),
-		buildOS:   runtime.GOOS,
-		buildArch: runtime.GOARCH,
-		gitCommit: getGitCommit(),
-		gitBranch: getGitBranch(),
+		version:     version,
+		buildDate:   time.Now().Format("2006-01-02"),
+		buildInfo:   "Wails v2",
+		appName:     appName,
+		goVersion:   runtime.Version(),
+		buildOS:     runtime.GOOS,
+		buildArch:   runtime.GOARCH,
+		gitCommit:   getGitCommit(),
+		gitBranch:   getGitBranch(),
+		configService: configService,
 	}
 }
 
