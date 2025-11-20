@@ -123,6 +123,7 @@ import { useWails } from './composables/useWails'
 import { useSettings } from './composables/useSettings'
 import { useRecognitionEvents } from './composables/useRecognitionEvents'
 import { useFileProcessing } from './composables/useFileProcessing'
+import { useVirtualProgress } from './composables/useVirtualProgress'
 import { formatTimestamp } from './utils/timeFormatter'
 import {
   fileToBase64
@@ -198,11 +199,22 @@ const versionInfo = ref('v?.?.?')
 const progressData = reactive({
   visible: false,
   progress: 0,
-  status: '准备中...',
+  status: '请稍等，Whisper正在进行识别...',
   currentTime: 0,
   totalTime: 0,
   showDetails: true
 })
+
+// 虚拟进度管理
+const {
+  virtualProgress,
+  isVirtualProgressActive,
+  statusTexts,
+  startVirtualProgress,
+  completeVirtualProgress,
+  stopVirtualProgress,
+  getCurrentStatusText
+} = useVirtualProgress()
 
 // 使用新的业务逻辑模块
 const {
@@ -222,6 +234,35 @@ watch(isProcessing, (newVal) => {
   appStatus.value = newVal ? '识别中' : '就绪'
   // 当识别状态改变时，也更新一次应用状态以获取最新的模型状态
   updateApplicationStatus()
+
+  // 当识别完成时停止虚拟进度
+  if (!newVal) {
+    stopVirtualProgress()
+  }
+})
+
+// 结合虚拟进度和真实进度
+watch([virtualProgress, isVirtualProgressActive], ([vProgress, isActive]) => {
+  if (isActive && isProcessing.value) {
+    // 使用虚拟进度更新显示
+    progressData.progress = vProgress
+    progressData.status = getCurrentStatusText()
+  }
+})
+
+// 监听真实进度事件，当有真实进度时优先使用
+watch(() => progressData.progress, (newProgress) => {
+  // 如果真实进度大于虚拟进度，停止虚拟进度并使用真实进度
+  if (newProgress > virtualProgress.value && isVirtualProgressActive.value) {
+    stopVirtualProgress()
+  }
+})
+
+// 监听识别状态变化，当识别完成时完成虚拟进度
+watch(isProcessing, (newVal) => {
+  if (!newVal && isVirtualProgressActive.value) {
+    completeVirtualProgress()
+  }
 })
 
 const {
@@ -467,7 +508,7 @@ const handleAIOptimize = async (text) => {
       recognitionResult.value.aiOptimizedText = optimizedText
     }
 
-    toastStore.showSuccess('AI优化完成', '文本已通过AI优化')
+    // toastStore.showSuccess('AI优化完成', '文本已通过AI优化')
   } catch (error) {
     toastStore.showError('AI优化失败', error.message)
   }
@@ -567,13 +608,17 @@ const startRecognition = async () => {
     isProcessing.value = true
     console.log('🎯 设置 isProcessing = true')
 
-    // 显示进度条
+    // 显示进度条并启动虚拟进度
     progressData.visible = true
     progressData.progress = 0
-    progressData.status = '正在启动识别...'
+    progressData.status = '请稍等，Whisper正在进行识别...'
     progressData.currentTime = 0
     progressData.totalTime = currentFile.value.duration || 0
     console.log('🎯 进度条已显示')
+
+    // 启动虚拟进度动画
+    startVirtualProgress()
+    console.log('🎯 虚拟进度已启动')
 
     // 调用Wails API开始识别，使用真实的事件监听
     console.log('🎯 文件路径详情:', {

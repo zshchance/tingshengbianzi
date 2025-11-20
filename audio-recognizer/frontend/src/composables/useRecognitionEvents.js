@@ -43,7 +43,7 @@ export function useRecognitionEvents({
       console.log('🎯 全局进度事件:', progress)
       if (isProcessing.value) {
         progressData.progress = progress.percentage || 0
-        progressData.status = progress.status || '正在处理中...'
+        progressData.status = progress.status || '请稍等，Whisper正在进行识别...'
         if (progress.currentTime) {
           progressData.currentTime = progress.currentTime
         }

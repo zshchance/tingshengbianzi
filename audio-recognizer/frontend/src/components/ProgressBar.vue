@@ -46,7 +46,7 @@ const props = defineProps({
   // 状态文本
   status: {
     type: String,
-    default: '准备中...'
+    default: '请稍等，Whisper正在进行识别...'
   },
   // 当前时间（秒）
   currentTime: {

@@ -1,6 +1,6 @@
 {
   "language": "zh-CN",
-  "modelPath": "/Users/zsh/Documents/2025个人工程onair/语言识别/whisper备选模型1",
+  "modelPath": "/Users/zsh/Documents/2025个人工程onair/语言识别/whisper备选模型",
   "specificModelFile": "/Users/zsh/Documents/2025个人工程onair/语言识别/whisper备选模型/ggml-large-v3-turbo-q8_0.bin",
   "sampleRate": 16000,
   "bufferSize": 4000,

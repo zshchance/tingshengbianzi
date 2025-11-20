@@ -63,8 +63,9 @@ export const RECOGNITION_STATUS = {
  * 进度条状态文本
  */
 export const PROGRESS_STATUS_TEXT = {
-  PREPARING: '正在启动识别...',
-  PROCESSING: '正在处理中...',
+  PREPARING: '请稍等，Whisper正在进行识别...',
+  PROCESSING: '正在分析音频内容...',
+  FINALIZING: '正在整理识别结果...',
   COMPLETED: '识别完成！',
   ERROR: '识别失败',
   STOPPED: '识别已停止'
