@@ -16,7 +16,6 @@ import (
 	"tingshengbianzi/backend/config"
 	"tingshengbianzi/backend/models"
 	"tingshengbianzi/backend/recognition"
-	"tingshengbianzi/backend/audio"
 	"tingshengbianzi/backend/utils"
 )
 
@@ -1011,19 +1010,26 @@ func (a *App) getRecommendations(models []map[string]interface{}) []string {
 
 // SelectAudioFile 选择音频文件
 func (a *App) SelectAudioFile() map[string]interface{} {
-	dialogOptions := runtime.OpenDialogOptions{
-		Title:           "选择音频文件",
-		DefaultDirectory: "",
-		DefaultFilename:  "",
-		Filters: []runtime.FileFilter{
-			{
-				DisplayName: "音频文件 (*.mp3, *.wav, *.m4a, *.ogg, *.flac)",
-				Pattern:     "*.mp3;*.wav;*.m4a;*.ogg;*.flac",
-			},
-		},
+	// 使用工具函数获取对话框选项
+	dialogOptions := utils.GetAudioFileDialogOptions()
+
+	// 转换为runtime类型
+	filters := make([]runtime.FileFilter, 0)
+	for _, filter := range dialogOptions["filters"].([]map[string]interface{}) {
+		filters = append(filters, runtime.FileFilter{
+			DisplayName: filter["displayName"].(string),
+			Pattern:     filter["pattern"].(string),
+		})
 	}
 
-	selectedFile, err := runtime.OpenFileDialog(a.ctx, dialogOptions)
+	options := runtime.OpenDialogOptions{
+		Title:            dialogOptions["title"].(string),
+		DefaultDirectory: dialogOptions["defaultDirectory"].(string),
+		DefaultFilename:  dialogOptions["defaultFilename"].(string),
+		Filters:          filters,
+	}
+
+	selectedFile, err := runtime.OpenFileDialog(a.ctx, options)
 	if err != nil {
 		return map[string]interface{}{
 			"success": false,
@@ -1038,66 +1044,33 @@ func (a *App) SelectAudioFile() map[string]interface{} {
 		}
 	}
 
-	// 获取文件信息
-	fileInfo, err := os.Stat(selectedFile)
+	// 使用音频文件处理器获取文件信息
+	handler, err := utils.NewAudioFileHandler()
 	if err != nil {
 		return map[string]interface{}{
 			"success": false,
-			"error":   fmt.Sprintf("无法读取文件信息: %v", err),
+			"error":   fmt.Sprintf("创建音频处理器失败: %v", err),
 		}
 	}
+	defer handler.Cleanup()
 
-	// 获取文件扩展名来确定类型
-	ext := strings.ToLower(filepath.Ext(selectedFile))
-	var mimeType string
-	switch ext {
-	case ".mp3":
-		mimeType = "audio/mpeg"
-	case ".wav":
-		mimeType = "audio/wav"
-	case ".m4a":
-		mimeType = "audio/mp4"
-	case ".ogg":
-		mimeType = "audio/ogg"
-	case ".flac":
-		mimeType = "audio/flac"
-	default:
-		mimeType = "audio/" + ext[1:]
-	}
-
-	// 尝试获取音频时长
-	var duration float64
-	processor, err := audio.NewProcessor()
+	audioInfo, err := handler.GetAudioFileInfo(selectedFile)
 	if err != nil {
-		fmt.Printf("创建音频处理器失败: %v\n", err)
-		// 如果无法创建处理器，使用文件大小估算时长
-		duration = a.estimateDurationFromSize(fileInfo.Size(), ext)
-		fmt.Printf("使用估算时长: %.2f 秒\n", duration)
-	} else {
-		defer processor.Cleanup()
-
-		// 使用音频处理器获取时长
-		audioDuration, err := processor.GetAudioDuration(selectedFile)
-		if err != nil {
-			fmt.Printf("获取音频时长失败: %v\n", err)
-			// 回退到估算
-			duration = a.estimateDurationFromSize(fileInfo.Size(), ext)
-			fmt.Printf("回退使用估算时长: %.2f 秒\n", duration)
-		} else {
-			duration = audioDuration
-			fmt.Printf("成功获取音频时长: %.2f 秒\n", duration)
+		return map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
 		}
 	}
 
 	return map[string]interface{}{
 		"success": true,
 		"file": map[string]interface{}{
-			"name":         filepath.Base(selectedFile),
-			"path":         selectedFile,
-			"size":         fileInfo.Size(),
-			"type":         mimeType,
-			"duration":     duration,
-			"lastModified": fileInfo.ModTime().UnixMilli(),
+			"name":         audioInfo.Name,
+			"path":         audioInfo.Path,
+			"size":         audioInfo.Size,
+			"type":         audioInfo.Type,
+			"duration":     audioInfo.Duration,
+			"lastModified": audioInfo.LastModified,
 		},
 	}
 }
@@ -1111,29 +1084,21 @@ func (a *App) GetAudioDuration(filePath string) map[string]interface{} {
 		}
 	}
 
-	// 检查文件是否存在
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		return map[string]interface{}{
-			"success": false,
-			"error":   "文件不存在",
-		}
-	}
-
-	// 创建音频处理器
-	processor, err := audio.NewProcessor()
+	// 使用音频文件处理器获取时长
+	handler, err := utils.NewAudioFileHandler()
 	if err != nil {
 		return map[string]interface{}{
 			"success": false,
 			"error":   fmt.Sprintf("创建音频处理器失败: %v", err),
 		}
 	}
+	defer handler.Cleanup()
 
-	// 获取音频时长
-	duration, err := processor.GetAudioDuration(filePath)
+	duration, err := handler.GetAudioDuration(filePath)
 	if err != nil {
 		return map[string]interface{}{
 			"success": false,
-			"error":   fmt.Sprintf("获取音频时长失败: %v", err),
+			"error":   err.Error(),
 		}
 	}
 
@@ -1255,38 +1220,6 @@ func (a *App) exportToVTT(result models.RecognitionResult) string {
 	return vtt.String()
 }
 
-// estimateDurationFromSize 根据文件大小估算音频时长
-func (a *App) estimateDurationFromSize(fileSize int64, ext string) float64 {
-	// 根据不同格式设置平均比特率（kbps）
-	var bitRate int
-	switch ext {
-	case ".mp3":
-		bitRate = 128
-	case ".wav":
-		bitRate = 1411 // CD质量
-	case ".m4a", ".aac":
-		bitRate = 128
-	case ".flac":
-		bitRate = 1000 // 无损压缩
-	case ".ogg":
-		bitRate = 160
-	default:
-		bitRate = 128 // 默认
-	}
-
-	// 计算时长（秒）
-	bytesPerSecond := float64(bitRate*1000) / 8 // 转换为字节/秒
-	estimatedDuration := float64(fileSize) / bytesPerSecond
-
-	// 设置合理的范围限制
-	if estimatedDuration < 1 {
-		estimatedDuration = 1 // 最少1秒
-	} else if estimatedDuration > 7200 {
-		estimatedDuration = 7200 // 最多2小时
-	}
-
-	return estimatedDuration
-}
 
 
 // GetAITemplates 获取所有可用的AI提示词模板
