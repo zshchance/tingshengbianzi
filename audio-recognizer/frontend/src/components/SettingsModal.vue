@@ -13,6 +13,111 @@
 
           <!-- 模态框内容 -->
           <div class="modal-body">
+            <!-- 模型设置 -->
+            <div class="setting-group">
+              <h4>🤖 模型设置</h4>
+              <div class="setting-row">
+                <label for="modelPath">模型目录:</label>
+                <div class="input-group">
+                  <input
+                    type="text"
+                    id="modelPath"
+                    :value="settings.modelPath"
+                    @input="updateSetting('modelPath', $event.target.value)"
+                    class="text-input"
+                    placeholder="模型文件路径"
+                  >
+                  <button
+                    @click="browseModelPath"
+                    class="btn btn-small btn-secondary"
+                    :disabled="modelLoading"
+                  >
+                    {{ modelLoading ? '选择中...' : '浏览' }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- 模型信息显示 -->
+              <div v-if="modelInfo" class="model-info">
+                <div class="setting-row">
+                  <label>模型状态:</label>
+                  <div class="model-status">
+                    <span
+                      :class="[
+                        'status-badge',
+                        modelInfo.hasWhisper ? 'status-success' : 'status-warning'
+                      ]"
+                    >
+                      {{ modelInfo.hasWhisper ? '✅ 已配置' : '⚠️ 需要配置' }}
+                    </span>
+                    <span class="model-count">
+                      ({{ modelInfo.modelCount }} 个模型)
+                    </span>
+                  </div>
+                </div>
+
+                <!-- 模型列表 -->
+                <div v-if="modelInfo.models && modelInfo.models.length > 0" class="model-list">
+                  <div class="setting-row">
+                    <label>可用模型 (点击选择):</label>
+                  </div>
+                  <div
+                    v-for="model in modelInfo.models"
+                    :key="model.name"
+                    class="model-item"
+                    :class="{ 'model-selected': isModelSelected(model) }"
+                    @click="selectModel(model)"
+                  >
+                    <div class="model-content">
+                      <div class="model-name">
+                        {{ model.name }}
+                        <span v-if="isModelSelected(model)" class="selected-indicator">✓</span>
+                      </div>
+                      <div class="model-details">
+                        <span class="model-type">{{ model.type }}</span>
+                        <span class="model-size">{{ model.sizeStr }}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="model-selection-info">
+                    当前选择: {{ getCurrentSelectedModel() || '未选择，将使用默认模型' }}
+                  </div>
+                </div>
+
+                <!-- 推荐信息 -->
+                <div v-if="modelInfo.recommendations" class="recommendations">
+                  <div class="setting-row">
+                    <label>建议:</label>
+                  </div>
+                  <ul class="recommendation-list">
+                    <li v-for="(rec, index) in modelInfo.recommendations" :key="index">
+                      {{ rec }}
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <!-- 操作按钮 -->
+              <div class="setting-row">
+                <label></label>
+                <div class="model-actions">
+                  <button
+                    @click="checkCurrentModelPath"
+                    class="btn btn-small btn-secondary"
+                    :disabled="modelLoading || !settings.modelPath"
+                  >
+                    {{ modelLoading ? '检查中...' : '检查模型' }}
+                  </button>
+                  <button
+                    @click="openModelDocs"
+                    class="btn btn-small btn-secondary"
+                  >
+                    📖 模型说明
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <!-- 界面设置 -->
             <div class="setting-group">
               <h4>🎨 界面设置</h4>
@@ -135,191 +240,70 @@
               </div>
             </div>
 
-            <!-- 高级设置切换 -->
-            <div class="advanced-toggle">
-              <button
-                @click="showAdvanced = !showAdvanced"
-                class="btn btn-secondary btn-small"
-              >
-                {{ showAdvanced ? '隐藏' : '显示' }}高级设置
-                <span class="toggle-icon">{{ showAdvanced ? '▼' : '▶' }}</span>
-              </button>
+            <!-- 导出设置 -->
+            <div class="setting-group">
+              <h4>💾 导出设置</h4>
+              <div class="setting-row">
+                <label for="defaultFormatSelect">默认格式:</label>
+                <select
+                  id="defaultFormatSelect"
+                  :value="settings.defaultExportFormat"
+                  @change="updateSetting('defaultExportFormat', $event.target.value)"
+                  class="select-input"
+                >
+                  <option
+                    v-for="format in exportFormats"
+                    :key="format.value"
+                    :value="format.value"
+                  >
+                    {{ format.label }} {{ format.extension }}
+                  </option>
+                </select>
+              </div>
+              <div class="setting-row">
+                <label>
+                  <input
+                    type="checkbox"
+                    :checked="settings.autoSaveResults"
+                    @change="updateSetting('autoSaveResults', $event.target.checked)"
+                  >
+                  自动保存识别结果
+                </label>
+              </div>
             </div>
 
-            <!-- 高级设置 -->
-            <transition name="slide-down">
-              <div v-if="showAdvanced" class="advanced-settings">
-                <!-- 导出设置 -->
-                <div class="setting-group">
-                  <h4>💾 导出设置</h4>
-                  <div class="setting-row">
-                    <label for="defaultFormatSelect">默认格式:</label>
-                    <select
-                      id="defaultFormatSelect"
-                      :value="settings.defaultExportFormat"
-                      @change="updateSetting('defaultExportFormat', $event.target.value)"
-                      class="select-input"
-                    >
-                      <option
-                        v-for="format in exportFormats"
-                        :key="format.value"
-                        :value="format.value"
-                      >
-                        {{ format.label }} {{ format.extension }}
-                      </option>
-                    </select>
-                  </div>
-                  <div class="setting-row">
-                    <label>
-                      <input
-                        type="checkbox"
-                        :checked="settings.autoSaveResults"
-                        @change="updateSetting('autoSaveResults', $event.target.checked)"
-                      >
-                      自动保存识别结果
-                    </label>
-                  </div>
-                </div>
-
-                <!-- AI优化 -->
-                <div class="setting-group">
-                  <h4>✨ AI优化</h4>
-                  <div class="setting-row">
-                    <label>
-                      <input
-                        type="checkbox"
-                        :checked="settings.enableAIOptimization"
-                        @change="updateSetting('enableAIOptimization', $event.target.checked)"
-                      >
-                      启用AI文本优化
-                    </label>
-                  </div>
-                  <div class="setting-row">
-                    <label for="aiTemplateSelect">优化模板:</label>
-                    <select
-                      id="aiTemplateSelect"
-                      :value="settings.aiTemplate"
-                      @change="updateSetting('aiTemplate', $event.target.value)"
-                      class="select-input"
-                    >
-                      <option
-                        v-for="template in aiTemplates"
-                        :key="template.value"
-                        :value="template.value"
-                        :title="template.description"
-                      >
-                        {{ template.label }} - {{ template.description }}
-                      </option>
-                    </select>
-                  </div>
-                </div>
-
-                <!-- 模型设置 -->
-                <div class="setting-group">
-                  <h4>🤖 模型设置</h4>
-                  <div class="setting-row">
-                    <label for="modelPath">模型目录:</label>
-                    <div class="input-group">
-                      <input
-                        type="text"
-                        id="modelPath"
-                        :value="settings.modelPath"
-                        @input="updateSetting('modelPath', $event.target.value)"
-                        class="text-input"
-                        placeholder="模型文件路径"
-                      >
-                      <button
-                        @click="browseModelPath"
-                        class="btn btn-small btn-secondary"
-                        :disabled="modelLoading"
-                      >
-                        {{ modelLoading ? '选择中...' : '浏览' }}
-                      </button>
-                    </div>
-                  </div>
-
-                  <!-- 模型信息显示 -->
-                  <div v-if="modelInfo" class="model-info">
-                    <div class="setting-row">
-                      <label>模型状态:</label>
-                      <div class="model-status">
-                        <span
-                          :class="[
-                            'status-badge',
-                            modelInfo.hasWhisper ? 'status-success' : 'status-warning'
-                          ]"
-                        >
-                          {{ modelInfo.hasWhisper ? '✅ 已配置' : '⚠️ 需要配置' }}
-                        </span>
-                        <span class="model-count">
-                          ({{ modelInfo.modelCount }} 个模型)
-                        </span>
-                      </div>
-                    </div>
-
-                    <!-- 模型列表 -->
-                    <div v-if="modelInfo.models && modelInfo.models.length > 0" class="model-list">
-                      <div class="setting-row">
-                        <label>可用模型 (点击选择):</label>
-                      </div>
-                      <div
-                        v-for="model in modelInfo.models"
-                        :key="model.name"
-                        class="model-item"
-                        :class="{ 'model-selected': isModelSelected(model) }"
-                        @click="selectModel(model)"
-                      >
-                        <div class="model-content">
-                          <div class="model-name">
-                            {{ model.name }}
-                            <span v-if="isModelSelected(model)" class="selected-indicator">✓</span>
-                          </div>
-                          <div class="model-details">
-                            <span class="model-type">{{ model.type }}</span>
-                            <span class="model-size">{{ model.sizeStr }}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div class="model-selection-info">
-                        当前选择: {{ getCurrentSelectedModel() || '未选择，将使用默认模型' }}
-                      </div>
-                    </div>
-
-                    <!-- 推荐信息 -->
-                    <div v-if="modelInfo.recommendations" class="recommendations">
-                      <div class="setting-row">
-                        <label>建议:</label>
-                      </div>
-                      <ul class="recommendation-list">
-                        <li v-for="(rec, index) in modelInfo.recommendations" :key="index">
-                          {{ rec }}
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-
-                  <!-- 操作按钮 -->
-                  <div class="setting-row">
-                    <label></label>
-                    <div class="model-actions">
-                      <button
-                        @click="checkCurrentModelPath"
-                        class="btn btn-small btn-secondary"
-                        :disabled="modelLoading || !settings.modelPath"
-                      >
-                        {{ modelLoading ? '检查中...' : '检查模型' }}
-                      </button>
-                      <button
-                        @click="openModelDocs"
-                        class="btn btn-small btn-secondary"
-                      >
-                        📖 模型说明
-                      </button>
-                    </div>
-                  </div>
-                </div>
+            <!-- AI优化 -->
+            <div class="setting-group">
+              <h4>✨ AI优化</h4>
+              <div class="setting-row">
+                <label>
+                  <input
+                    type="checkbox"
+                    :checked="settings.enableAIOptimization"
+                    @change="updateSetting('enableAIOptimization', $event.target.checked)"
+                  >
+                  启用AI文本优化
+                </label>
               </div>
-            </transition>
+              <div class="setting-row">
+                <label for="aiTemplateSelect">优化模板:</label>
+                <select
+                  id="aiTemplateSelect"
+                  :value="settings.aiTemplate"
+                  @change="updateSetting('aiTemplate', $event.target.value)"
+                  class="select-input"
+                >
+                  <option
+                    v-for="template in aiTemplates"
+                    :key="template.value"
+                    :value="template.value"
+                    :title="template.description"
+                  >
+                    {{ template.label }} - {{ template.description }}
+                  </option>
+                </select>
+              </div>
+            </div>
           </div>
 
           <!-- 模态框底部 -->
@@ -385,7 +369,6 @@ const toastStore = useToastStore()
 const {
   settings,
   isLoading,
-  showAdvanced,
   availableLanguages,
   availableModels,
   exportFormats,
@@ -655,6 +638,262 @@ watch(() => settings.modelPath, async (newPath, oldPath) => {
   border: 1px solid var(--border-color, #e5e7eb);
 }
 
+/* 暗色模式下的样式优化 */
+html[data-theme="dark"] .modal {
+  background: #1f2937 !important;
+  border-color: #374151 !important;
+  color: #f9fafb !important;
+}
+
+html[data-theme="dark"] .modal-header {
+  background: #111827 !important;
+  border-color: #374151 !important;
+}
+
+html[data-theme="dark"] .modal-header h3 {
+  color: #f9fafb !important;
+}
+
+html[data-theme="dark"] .modal-close {
+  color: #9ca3af !important;
+}
+
+html[data-theme="dark"] .modal-close:hover {
+  background: #374151 !important;
+  color: #f9fafb !important;
+}
+
+html[data-theme="dark"] .modal-footer {
+  background: #111827 !important;
+  border-color: #374151 !important;
+}
+
+html[data-theme="dark"] .setting-group h4 {
+  color: #f9fafb !important;
+  border-color: #374151 !important;
+}
+
+html[data-theme="dark"] .setting-row label {
+  color: #d1d5db !important;
+}
+
+html[data-theme="dark"] .text-input {
+  background: #374151 !important;
+  border-color: #4b5563 !important;
+  color: #f9fafb !important;
+}
+
+html[data-theme="dark"] .text-input:focus {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
+}
+
+html[data-theme="dark"] .range-input {
+  background: #4b5563 !important;
+}
+
+html[data-theme="dark"] .range-value {
+  color: #f9fafb !important;
+}
+
+html[data-theme="dark"] .model-info {
+  background: #374151 !important;
+  border-color: #4b5563 !important;
+}
+
+html[data-theme="dark"] .model-item {
+  background: #374151 !important;
+  border-color: #4b5563 !important;
+  color: #f9fafb !important;
+}
+
+html[data-theme="dark"] .model-item:hover {
+  background: #4b5563 !important;
+  border-color: #3b82f6 !important;
+}
+
+html[data-theme="dark"] .model-item.model-selected {
+  background: #1e3a8a !important;
+  border-color: #3b82f6 !important;
+}
+
+html[data-theme="dark"] .model-name {
+  color: #f9fafb !important;
+}
+
+html[data-theme="dark"] .model-selection-info {
+  background: #374151 !important;
+  color: #d1d5db !important;
+  border-color: #3b82f6 !important;
+}
+
+html[data-theme="dark"] .recommendation-list {
+  color: #d1d5db !important;
+}
+
+html[data-theme="dark"] .status-success {
+  background: #065f46 !important;
+  color: #34d399 !important;
+}
+
+html[data-theme="dark"] .status-warning {
+  background: #92400e !important;
+  color: #fbbf24 !important;
+}
+
+html[data-theme="dark"] .model-count {
+  color: #9ca3af !important;
+}
+
+html[data-theme="dark"] .select-input {
+  background: #374151 !important;
+  border-color: #4b5563 !important;
+  color: #f9fafb !important;
+}
+
+html[data-theme="dark"] .select-input:focus {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
+}
+
+html[data-theme="dark"] .select-input option {
+  background: #374151 !important;
+  color: #f9fafb !important;
+}
+
+html[data-theme="dark"] input[type="checkbox"] {
+  accent-color: #3b82f6 !important;
+}
+
+/* 也支持系统级暗色模式作为备选 */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .modal {
+    background: #1f2937 !important;
+    border-color: #374151 !important;
+    color: #f9fafb !important;
+  }
+
+  html:not([data-theme="light"]) .modal-header {
+    background: #111827 !important;
+    border-color: #374151 !important;
+  }
+
+  html:not([data-theme="light"]) .modal-header h3 {
+    color: #f9fafb !important;
+  }
+
+  html:not([data-theme="light"]) .modal-close {
+    color: #9ca3af !important;
+  }
+
+  html:not([data-theme="light"]) .modal-close:hover {
+    background: #374151 !important;
+    color: #f9fafb !important;
+  }
+
+  html:not([data-theme="light"]) .modal-footer {
+    background: #111827 !important;
+    border-color: #374151 !important;
+  }
+
+  html:not([data-theme="light"]) .setting-group h4 {
+    color: #f9fafb !important;
+    border-color: #374151 !important;
+  }
+
+  html:not([data-theme="light"]) .setting-row label {
+    color: #d1d5db !important;
+  }
+
+  html:not([data-theme="light"]) .text-input {
+    background: #374151 !important;
+    border-color: #4b5563 !important;
+    color: #f9fafb !important;
+  }
+
+  html:not([data-theme="light"]) .text-input:focus {
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
+  }
+
+  html:not([data-theme="light"]) .range-input {
+    background: #4b5563 !important;
+  }
+
+  html:not([data-theme="light"]) .range-value {
+    color: #f9fafb !important;
+  }
+
+  html:not([data-theme="light"]) .model-info {
+    background: #374151 !important;
+    border-color: #4b5563 !important;
+  }
+
+  html:not([data-theme="light"]) .model-item {
+    background: #374151 !important;
+    border-color: #4b5563 !important;
+    color: #f9fafb !important;
+  }
+
+  html:not([data-theme="light"]) .model-item:hover {
+    background: #4b5563 !important;
+    border-color: #3b82f6 !important;
+  }
+
+  html:not([data-theme="light"]) .model-item.model-selected {
+    background: #1e3a8a !important;
+    border-color: #3b82f6 !important;
+  }
+
+  html:not([data-theme="light"]) .model-name {
+    color: #f9fafb !important;
+  }
+
+  html:not([data-theme="light"]) .model-selection-info {
+    background: #374151 !important;
+    color: #d1d5db !important;
+    border-color: #3b82f6 !important;
+  }
+
+  html:not([data-theme="light"]) .recommendation-list {
+    color: #d1d5db !important;
+  }
+
+  html:not([data-theme="light"]) .status-success {
+    background: #065f46 !important;
+    color: #34d399 !important;
+  }
+
+  html:not([data-theme="light"]) .status-warning {
+    background: #92400e !important;
+    color: #fbbf24 !important;
+  }
+
+  html:not([data-theme="light"]) .model-count {
+    color: #9ca3af !important;
+  }
+
+  html:not([data-theme="light"]) .select-input {
+    background: #374151 !important;
+    border-color: #4b5563 !important;
+    color: #f9fafb !important;
+  }
+
+  html:not([data-theme="light"]) .select-input:focus {
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
+  }
+
+  html:not([data-theme="light"]) .select-input option {
+    background: #374151 !important;
+    color: #f9fafb !important;
+  }
+
+  html:not([data-theme="light"]) input[type="checkbox"] {
+    accent-color: #3b82f6 !important;
+  }
+}
+
 .modal-header {
   display: flex;
   justify-content: space-between;
@@ -774,6 +1013,22 @@ watch(() => settings.modelPath, async (newPath, oldPath) => {
 }
 
 .text-input:focus {
+  outline: none;
+  border-color: var(--primary-color, #3b82f6);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.select-input {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 6px;
+  font-size: 14px;
+  background: var(--input-bg, #ffffff);
+  color: var(--text-primary, #1f2937);
+  cursor: pointer;
+}
+
+.select-input:focus {
   outline: none;
   border-color: var(--primary-color, #3b82f6);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
