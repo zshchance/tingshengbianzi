@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"embed"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -30,6 +29,7 @@ type App struct {
 	thirdPartyFS embed.FS
 	configManager *config.ConfigManager
 	modelService  *services.ModelService
+	audioService  *services.AudioService
 }
 
 // NewApp creates a new App application struct
@@ -54,6 +54,16 @@ func (a *App) startup(ctx context.Context) {
 
 	// 初始化模型服务
 	a.modelService = services.NewModelService(ctx)
+
+	// 初始化音频服务
+	audioService, err := services.NewAudioService(ctx)
+	if err != nil {
+		fmt.Printf("初始化音频服务失败: %v\n", err)
+		utils.LogError("初始化音频服务失败: %v", err)
+	} else {
+		a.audioService = audioService
+		utils.LogInfo("音频服务初始化成功")
+	}
 
 	// 初始化日志系统
 	utils.InitLogger()
@@ -677,103 +687,24 @@ func (a *App) GetModelInfo(directory string) map[string]interface{} {
 
 // SelectAudioFile 选择音频文件
 func (a *App) SelectAudioFile() map[string]interface{} {
-	// 使用工具函数获取对话框选项
-	dialogOptions := utils.GetAudioFileDialogOptions()
-
-	// 转换为runtime类型
-	filters := make([]runtime.FileFilter, 0)
-	for _, filter := range dialogOptions["filters"].([]map[string]interface{}) {
-		filters = append(filters, runtime.FileFilter{
-			DisplayName: filter["displayName"].(string),
-			Pattern:     filter["pattern"].(string),
-		})
-	}
-
-	options := runtime.OpenDialogOptions{
-		Title:            dialogOptions["title"].(string),
-		DefaultDirectory: dialogOptions["defaultDirectory"].(string),
-		DefaultFilename:  dialogOptions["defaultFilename"].(string),
-		Filters:          filters,
-	}
-
-	selectedFile, err := runtime.OpenFileDialog(a.ctx, options)
-	if err != nil {
+	if a.audioService == nil {
 		return map[string]interface{}{
 			"success": false,
-			"error":   err.Error(),
+			"error":   "音频服务未初始化",
 		}
 	}
-
-	if selectedFile == "" {
-		return map[string]interface{}{
-			"success": false,
-			"error":   "未选择文件",
-		}
-	}
-
-	// 使用音频文件处理器获取文件信息
-	handler, err := utils.NewAudioFileHandler()
-	if err != nil {
-		return map[string]interface{}{
-			"success": false,
-			"error":   fmt.Sprintf("创建音频处理器失败: %v", err),
-		}
-	}
-	defer handler.Cleanup()
-
-	audioInfo, err := handler.GetAudioFileInfo(selectedFile)
-	if err != nil {
-		return map[string]interface{}{
-			"success": false,
-			"error":   err.Error(),
-		}
-	}
-
-	return map[string]interface{}{
-		"success": true,
-		"file": map[string]interface{}{
-			"name":         audioInfo.Name,
-			"path":         audioInfo.Path,
-			"size":         audioInfo.Size,
-			"type":         audioInfo.Type,
-			"duration":     audioInfo.Duration,
-			"lastModified": audioInfo.LastModified,
-		},
-	}
+	return a.audioService.SelectAudioFile()
 }
 
 // GetAudioDuration 获取音频文件的真实时长
 func (a *App) GetAudioDuration(filePath string) map[string]interface{} {
-	if filePath == "" {
+	if a.audioService == nil {
 		return map[string]interface{}{
 			"success": false,
-			"error":   "文件路径不能为空",
+			"error":   "音频服务未初始化",
 		}
 	}
-
-	// 使用音频文件处理器获取时长
-	handler, err := utils.NewAudioFileHandler()
-	if err != nil {
-		return map[string]interface{}{
-			"success": false,
-			"error":   fmt.Sprintf("创建音频处理器失败: %v", err),
-		}
-	}
-	defer handler.Cleanup()
-
-	duration, err := handler.GetAudioDuration(filePath)
-	if err != nil {
-		return map[string]interface{}{
-			"success": false,
-			"error":   err.Error(),
-		}
-	}
-
-	return map[string]interface{}{
-		"success":  true,
-		"duration": duration,
-		"filePath": filePath,
-	}
+	return a.audioService.GetAudioDuration(filePath)
 }
 
 // ExportResult 导出识别结果
@@ -945,73 +876,23 @@ func (a *App) sendProgressEvent(eventType string, data interface{}) {
 
 // OnFileDrop 处理Wails原生文件拖放事件
 func (a *App) OnFileDrop(files []string) {
-	fmt.Printf("🎯 OnFileDrop: 收到 %d 个文件\n", len(files))
-
-	if len(files) == 0 {
-		fmt.Println("❌ OnFileDrop: 没有文件")
+	if a.audioService == nil {
+		runtime.EventsEmit(a.ctx, "file-drop-error", map[string]interface{}{
+			"error":   "音频服务未初始化",
+			"message": "音频服务未初始化，无法处理文件拖放",
+			"file":    "",
+		})
 		return
 	}
-
-	// 使用工具函数验证文件
-	filePath := files[0]
-	validationResult := utils.ValidateAudioFile(filePath)
-
-	if !validationResult.IsValid {
-		a.sendFileDropError(filePath, validationResult.ErrorMsg)
-		return
-	}
-
-	fmt.Printf("✅ OnFileDrop: 文件验证通过，发送前端处理事件\n")
-
-	// 发送文件拖放成功事件到前端
-	fileData := map[string]interface{}{
-		"success": true,
-		"file": map[string]interface{}{
-			"name":         filepath.Base(filePath),
-			"path":         filePath,
-			"size":         validationResult.FileInfo.Size(),
-			"sizeFormatted": validationResult.SizeStr,
-			"extension":    validationResult.Extension,
-			"hasPath":      true,
-		},
-	}
-
-	runtime.EventsEmit(a.ctx, "file-dropped", fileData)
-	fmt.Printf("📤 OnFileDrop: 已发送文件拖放事件到前端\n")
+	a.audioService.OnFileDrop(files)
 }
 
 
-// sendFileDropError 发送文件拖放错误事件
-func (a *App) sendFileDropError(filePath, errorMsg string) {
-	fmt.Printf("❌ OnFileDrop: 文件验证失败: %s\n", errorMsg)
-	runtime.EventsEmit(a.ctx, "file-drop-error", map[string]interface{}{
-		"error":   "文件验证失败",
-		"message": errorMsg,
-		"file":    filePath,
-	})
-}
 
 // createTempFileFromBase64 从Base64数据创建临时文件
 func (a *App) createTempFileFromBase64(base64Data string) (string, error) {
-	// 解码Base64数据
-	fileData, err := base64.StdEncoding.DecodeString(base64Data)
-	if err != nil {
-		return "", fmt.Errorf("Base64解码失败: %v", err)
+	if a.audioService == nil {
+		return "", fmt.Errorf("音频服务未初始化")
 	}
-
-	// 创建临时文件
-	tempFile, err := os.CreateTemp("", "audio-*.wav")
-	if err != nil {
-		return "", fmt.Errorf("创建临时文件失败: %v", err)
-	}
-	defer tempFile.Close()
-
-	// 写入数据到临时文件
-	if _, err := tempFile.Write(fileData); err != nil {
-		os.Remove(tempFile.Name())
-		return "", fmt.Errorf("写入临时文件失败: %v", err)
-	}
-
-	fmt.Printf("✅ 临时文件创建成功: %s，大小: %d bytes\n", tempFile.Name(), len(fileData))
-	return tempFile.Name(), nil
+	return a.audioService.CreateTempFileFromBase64(base64Data)
 }
